@@ -1,6 +1,6 @@
 from mutagen.mp3 import MP3
 from mutagen.id3 import ID3, TIT2, TPE1, TALB, TRCK, TYER, TDRC, TCON, COMM, APIC
-from song import Song
+from .song import Song
 import logging
 
 SORT_MODES = {
@@ -32,24 +32,3 @@ class Playlist:
         reverse = mode.endswith("DESC")
         key_func = SORT_MODES.get(mode, lambda s: "")
         self.songs.sort(key=key_func, reverse=reverse)
-
-
-# playlist = Playlist()
-# song = Song("beat_it.mp3")
-# song2 = Song("thriller.mp3")
-# song3 = Song("billie_jean.mp3")
-# song4 = Song("this_girl_is_mine.mp3")
-# song4.update(artist = "Michael Jackson", title = "This Girl is Mine", album = "Thriller", genre = "Rock?")
-# song4.set_art("shoot.png")
-# song4.save()
-# playlist.add_song(song)
-# playlist.add_song(song2)
-# playlist.add_song(song3)
-# playlist.add_song(song4)
-# playlist.show_list()
-# playlist.sort_songs("TITLE_DESC")
-# playlist.show_list()
-# playlist.sort_songs("TITLE_ASC")
-# playlist.show_list()
-
-
