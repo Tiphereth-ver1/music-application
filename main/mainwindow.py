@@ -21,9 +21,9 @@ class MainWindow(QMainWindow):
         self.player = self.engine.player
 
         songs = self.filepath_to_songs()
-        self.player._queue_songs(songs)
-        self.player._begin_playback()
-        self.engine.play_current()
+        # self.player._queue_songs(songs)
+        # self.player._begin_playback()
+        # self.engine.play_current()
 
 
 
@@ -71,6 +71,7 @@ class MainWindow(QMainWindow):
         self.ui.returning_song.connect(self.receive_song)
         self.ui.clearing_history.connect(self.clear_history)
         self.ui.clearing_queue.connect(self.clear_queue)
+        self.ui.updating_view.connect(self.refresh_song_list)
 
         # --- Timer for updating song progress ---
         self.timer = QTimer(self)
@@ -81,7 +82,7 @@ class MainWindow(QMainWindow):
         self.timer.start(500)  # update twice per second
 
         # --- Initialize displays ---
-        self.song_cover_label.update_now_playing(self.player.get_playing())
+        # self.song_cover_label.update_now_playing(self.player.get_playing())
         # self.queue_history_display.update_queue(self.player.queue)
         # self.queue_history_display.update_history(self.player.history)
         self.album_view.set_songs(songs)
@@ -94,6 +95,14 @@ class MainWindow(QMainWindow):
             rel_path = file_path.relative_to(base_dir)
             songs.append(Song(rel_path))
         return songs
+
+    @Slot()
+    def refresh_song_list(self):
+        songs = self.filepath_to_songs()
+        self.album_view.set_songs(songs)
+        print("song list refreshed")
+
+
     
     @Slot()
     def next_song(self):

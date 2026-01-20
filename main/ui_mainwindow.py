@@ -8,6 +8,7 @@ from .player import Player
 
 class Ui_MainWindow(QWidget):
     returning_song = Signal(object, str)
+    updating_view = Signal()
     clearing_queue = Signal()
     clearing_history = Signal()
     def __init__(self, player: Player, parent = None):
@@ -28,6 +29,7 @@ class Ui_MainWindow(QWidget):
         self.rightbar.setMinimumSize(QSize(250, 600))
         self.rightbar.clearing_history.connect(self.clear_history)
         self.rightbar.clearing_queue.connect(self.clear_queue)
+        self.swappable.updating_view.connect(self.update_view)
 
         self.layout.addWidget(self.leftbar)
         self.layout.addWidget(self.swappable)
@@ -35,7 +37,6 @@ class Ui_MainWindow(QWidget):
         self.layout.setStretchFactor(self.swappable, 1)
 
     def return_song(self, song, mode):
-        print('main window emitted')
         self.returning_song.emit(song, mode)
     
     def clear_queue(self):
@@ -43,6 +44,9 @@ class Ui_MainWindow(QWidget):
 
     def clear_history(self):
         self.clearing_history.emit()
+    
+    def update_view(self):
+        self.updating_view.emit()
 
 
 

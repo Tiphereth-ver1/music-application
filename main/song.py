@@ -32,11 +32,17 @@ class Song(QObject):
     def path_as_url(self):
         return QUrl.fromLocalFile(self.path)
 
-    def set(self, field: str, value:str):
+    def set(self, field: str, value:str | None):
         try:
             frame_cls = TAG_MAP[field]
         except KeyError:
             raise ValueError(f"Unknown tag field: {field}")
+        
+        frame_id = frame_cls.__name__
+        
+        if value is None:
+            self.audio.pop(frame_id, None)
+            return
 
         self.audio[frame_cls.__name__] = frame_cls(
             encoding=3,
@@ -66,6 +72,24 @@ class Song(QObject):
         data=art_bytes)
         self.audio.save(v2_version=3)
         self.changed.emit()
+    
+    def rename_file(self):
+        """
+        new_name: filename only, e.g. 'Ayase - 夜撫でるメノウ.mp3'
+        """
+
+        new_path = self.path.with_name(f'{self.get_info("title")}.mp3')
+        if self.path ==  new_path:
+            print("Target name is already name of the file.")
+            return
+        if new_path.exists():
+            raise FileExistsError(f"Target file already exists: {new_path}")
+
+        self.path.rename(new_path)
+        self.path = new_path
+        self.audio = MP3(self.path, ID3=ID3)
+
+
 
 
     def update(self, **fields):

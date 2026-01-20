@@ -1,10 +1,11 @@
 from PySide6.QtWidgets import QWidget, QStackedWidget, QVBoxLayout, QSizePolicy
 from PySide6.QtCore import Signal
 
-from .subcomponents import AlbumGridView, PlayerView, AlbumSelect
+from .subcomponents import AlbumGridView, PlayerView, AlbumSelect, DownloaderView
 
 class Swappable(QWidget):
     returning_song = Signal(object, str)
+    updating_view = Signal()
     def __init__(self, parent=None):
         super().__init__(parent)
 
@@ -24,6 +25,7 @@ class Swappable(QWidget):
         # your pages
         self.album_view = AlbumGridView(self.stack)
         self.player_view = PlayerView(self.stack)
+        self.downloader_view = DownloaderView(self.stack)
         self.album_select = None
 
         # self.album_view.setStyleSheet("background-color: lightblue;")
@@ -31,13 +33,18 @@ class Swappable(QWidget):
 
         self.album_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.player_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.downloader_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
 
         self.stack.addWidget(self.album_view)
         self.stack.addWidget(self.player_view)
+        self.stack.addWidget(self.downloader_view)
 
         # default visible page
         self.stack.setCurrentWidget(self.album_view)
         self.album_view.album_clicked.connect(self.show_album_select)
+        self.downloader_view.updating_view.connect(self.update_view)
+
 
     
     def show_album_select(self, album):
@@ -62,6 +69,9 @@ class Swappable(QWidget):
     
     def return_song(self, song, mode):
         self.returning_song.emit(song, mode)
+    
+    def update_view(self):
+        self.updating_view.emit()
 
 
 

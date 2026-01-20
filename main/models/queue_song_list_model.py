@@ -35,7 +35,11 @@ class QueueSongListModel(QAbstractListModel):
         if role == Qt.DecorationRole:
             if song not in self._icons:
                 pixmap = QPixmap()
-                pixmap.loadFromData(song.get_art())
+                if song.get_art():
+                    pixmap.loadFromData(song.get_art())
+                else:
+                    pixmap = QPixmap(250, 250)
+                    pixmap.fill(Qt.gray)
                 pixmap = pixmap.scaled(
                     40, 40, Qt.KeepAspectRatio, Qt.SmoothTransformation
                 )

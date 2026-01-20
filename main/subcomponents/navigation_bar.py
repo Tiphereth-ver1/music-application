@@ -24,11 +24,13 @@ class NavigationBar(QWidget):
         self.album_button = QToolButton(self)
         self.player_button = QToolButton(self)
         self.visualiser_button = QToolButton(self)
+        self.downloader_button = QToolButton(self)
 
         for btn, text, idx in (
             (self.album_button, "Albums", 0),
             (self.player_button, "Player", 1),
-            (self.visualiser_button, "Visualiser", 2),
+            (self.visualiser_button, "Visualiser", 3),
+            (self.downloader_button, "Downloader", 2)
         ):
             btn.setText(text)
             btn.setCheckable(True)
