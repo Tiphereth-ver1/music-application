@@ -8,11 +8,12 @@ import requests
 from collections import deque
 from copy import deepcopy
 import time, sys
-from ...song import Song
+from ...song_subclasses import MP3Song, M4ASong, FLACSong
 
 class DL_OPTIONS(Enum):
     mp3 = "mp3"
     m4a = "m4a"
+    flac = "flac"
 
 # This is an exercise in threading. There is a general seperation of concerns with threading that look like the following:
 # Job
@@ -24,12 +25,22 @@ class DownloadJob:
         base_dir = Path(__file__).resolve().parent.parent.parent.parent
         self.output_path = base_dir / "music"
         self.url = url
+        self.opt = opt
         self.uuid = str(uuid.uuid4())
+
+
+        codec = {
+            DL_OPTIONS.mp3: "mp3",
+            DL_OPTIONS.m4a: "m4a",   # note: this typically means AAC in an MP4/M4A container
+            DL_OPTIONS.flac: "flac",
+        }[opt]
+
         self.ydl_opts = {
-        'format': f'{opt.value}/bestaudio/best',
+        'format': 'bestaudio/best',
         'postprocessors': [{  # Extract audio using ffmpeg
         'key': 'FFmpegExtractAudio',
-        'preferredcodec': 'mp3',
+        "preferredcodec": codec,
+
     }],
         'preferredcodec': opt.value,
         "overwrites": True,
@@ -108,7 +119,7 @@ class PreviewService(QObject):
 
 class DownloadService(QObject):
     progress = Signal(str, dict)   # job_id, payload
-    finished = Signal(str, str, dict)    # job_id
+    finished = Signal(str, str, str, dict)    # job_id, ext_obj, out_path, dict
     failed = Signal(str, str)      # job_id, error
     idle = Signal()
     update_view = Signal()
@@ -226,15 +237,14 @@ class DownloadService(QObject):
             self.failed.emit(job_id, f"No video id; cannot resolve output path. pp={pp}")
             return
 
-        # final_ext = (job.opt.value if job else "mp3")
-        final_ext = "mp3"
+        final_ext = (job.opt.value if job else "mp3")
 
         out_path = (job.output_path if job else Path.cwd()) / f"{vid}.{final_ext}"
 
         # Windows latency / move guard
-        for _ in range(30):  # ~1s
+        for _ in range(50):  # ~2.5s
             if out_path.exists():
-                self.finished.emit(job_id, str(out_path), info_parse)
+                self.finished.emit(job_id, final_ext, str(out_path), info_parse)
                 return
             time.sleep(0.05)
 
@@ -259,6 +269,7 @@ class DownloadManager(QObject):
         self.download_thread = QThread()
         self.preview_thread = QThread()
         self.preview_bytes_dict = {}
+        self.processed_songs = []
         self.last_preview_video_id = None
         self.preview_url = None
         self.automatic_metadata = True
@@ -302,29 +313,40 @@ class DownloadManager(QObject):
         self.last_preview_video_id = info.get("ID")
         self.preview_bytes_dict[self.last_preview_video_id] = info.get("Thumbnail")
     
+    def song_select(self, filepath, final_ext):
+        if final_ext == "mp3":
+            song = MP3Song(filepath)
+        elif final_ext == "m4a":
+            song = M4ASong(filepath)
+        elif final_ext == "flac":
+            song = FLACSong(filepath)
+        return song
 
     @Slot(str, str, dict) 
-    def write_metadata(self, job_id, filepath, info):
+    def write_metadata(self, job_id, final_ext, filepath, info):
+        print(final_ext)
         print("metadata written")
         if not self.automatic_metadata:
             self.updating_view.emit()
             return
+        
+        if job_id not in self.processed_songs:
+            song = self.song_select(filepath, final_ext)
+            print(filepath)
 
-        song = Song(filepath)
-        print(filepath)
+            song.update(
+                artist=info.get("Artist") or info.get("Uploader"),
+                title=info.get("Title"),
+                album=info.get("Album"),
+            )
 
-        song.update(
-            artist=info.get("Artist"),
-            title=info.get("Title"),
-            album=info.get("Album"),
-        )
+            song.rename_file()
 
-        song.rename_file()
-
-        art_bytes = self.preview_bytes_dict[info.get("ID")]
-        if art_bytes:
-            song.set_art_bytes(art_bytes)
-        self.updating_view.emit()
+            art_bytes = self.preview_bytes_dict[info.get("ID")]
+            if art_bytes:
+                song.set_art_bytes(True, art_bytes)
+            self.updating_view.emit()
+            self.processed_songs.append(job_id)
 
     @Slot(str, dict)
     def request_status(self, job_id: str, d: dict) -> None:

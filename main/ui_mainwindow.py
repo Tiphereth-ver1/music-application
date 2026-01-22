@@ -23,7 +23,7 @@ class Ui_MainWindow(QWidget):
         self.swappable = Swappable(self)
         self.swappable.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Expanding)
         self.swappable.setMinimumSize(QSize(450, 600))
-        self.swappable.returning_song.connect(self.return_song)
+        self.swappable.returning_song.connect(self.return_songs)
         self.rightbar = QueueHistoryDisplay(player, self)
         self.rightbar.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Expanding)
         self.rightbar.setMinimumSize(QSize(250, 600))
@@ -36,8 +36,8 @@ class Ui_MainWindow(QWidget):
         self.layout.addWidget(self.rightbar)
         self.layout.setStretchFactor(self.swappable, 1)
 
-    def return_song(self, song, mode):
-        self.returning_song.emit(song, mode)
+    def return_songs(self, songs, mode):
+        self.returning_song.emit(songs, mode)
     
     def clear_queue(self):
         self.clearing_queue.emit()

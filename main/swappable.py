@@ -57,7 +57,8 @@ class Swappable(QWidget):
         self.stack.addWidget(self.album_select)
         self.stack.setCurrentWidget(self.album_select)
         self.album_select.back_button.clicked.connect(self.back_to_album_grid)
-        self.album_select.returning_song.connect(self.return_song)
+        self.album_select.returning_song.connect(self.return_songs)
+        self.album_select.returning_album.connect(self.return_songs)
 
 
     def back_to_album_grid(self):
@@ -67,8 +68,8 @@ class Swappable(QWidget):
             self.album_select.deleteLater()
             self.album_select = None
     
-    def return_song(self, song, mode):
-        self.returning_song.emit(song, mode)
+    def return_songs(self, songs, mode):
+        self.returning_song.emit(songs, mode)
     
     def update_view(self):
         self.updating_view.emit()

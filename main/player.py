@@ -33,6 +33,8 @@ class Player(QObject):
         self.history : list[Song] = []
         self.shuffle = False
 
+    def _stop_playing(self):
+        self.playing = None
 
     def _log_playing(self, song: Song):
         title, artist = song.get_info("title"), song.get_info("artist")
@@ -40,7 +42,7 @@ class Player(QObject):
     
     def _begin_playback(self):
         if not self.playing and self.queue:
-            self.playing = self.queue.popleft()
+            self._set_playing(self._advance_queue())
 
     def _push_history(self, song: Song) -> None:
         if song:
@@ -100,6 +102,11 @@ class Player(QObject):
         for song in songs:
             self._queue_song_back(song)
         # self.queue_modified.emit()
+    
+    def _queue_songs_front(self, songs : list[Song]) -> None:
+        for song in reversed(songs):
+            self._queue_song_front(song)
+        self.queue_modified.emit()
 
     def _queue_song_back(self, song : Song) -> None:
         self.queue.append(song)

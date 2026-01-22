@@ -3,6 +3,7 @@ from PySide6.QtWidgets import QApplication, QMainWindow
 from PySide6.QtCore import Slot, QTimer
 from PySide6.QtGui import (QPixmap)
 from pathlib import Path
+from .song_subclasses import M4ASong, MP3Song, FLACSong
 
 from .ui_mainwindow import Ui_MainWindow
 from .audio_engine import AudioEngine
@@ -93,7 +94,13 @@ class MainWindow(QMainWindow):
         songs = []
         for file_path in music_folder.rglob("*.mp3"):
             rel_path = file_path.relative_to(base_dir)
-            songs.append(Song(rel_path))
+            songs.append(MP3Song(rel_path))
+        for file_path in music_folder.rglob("*.flac"):
+            rel_path = file_path.relative_to(base_dir)
+            songs.append(FLACSong(rel_path))
+        for file_path in music_folder.rglob("*.m4a"):
+            rel_path = file_path.relative_to(base_dir)
+            songs.append(M4ASong(rel_path))
         return songs
 
     @Slot()
@@ -102,7 +109,8 @@ class MainWindow(QMainWindow):
         self.album_view.set_songs(songs)
         print("song list refreshed")
 
-
+    def stop_playing(self):
+        self.player._stop_playing()
     
     @Slot()
     def next_song(self):
@@ -135,6 +143,12 @@ class MainWindow(QMainWindow):
         print(f"{song.get_info('title')} queued")
     
     @Slot()
+    def queue_songs(self, song):
+        self.player._queue_songs(song)
+        print(f"many songs queued")
+
+    
+    @Slot()
     def clear_queue(self):
         print("queue cleared")
         self.player.clear_queue()
@@ -146,11 +160,14 @@ class MainWindow(QMainWindow):
 
 
     @Slot()
-    def receive_song(self,song,mode):
+    def receive_song(self,songs,mode):
         if mode == "queue":
-            self.queue_song(song)
+            self.queue_songs(songs)
         elif mode == "play":
-            self.player.play_now(song)
+            self.clear_queue()
+            self.stop_playing()
+            self.player._queue_songs_front(songs)
+            self.player._begin_playback()
             self.engine.play_current()
             self.song_cover_label.update_now_playing(self.engine.player.get_playing())
 

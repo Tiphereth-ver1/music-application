@@ -1,14 +1,20 @@
-from PySide6.QtWidgets import (QSizePolicy, QPushButton, QVBoxLayout, QHBoxLayout, QWidget, QLabel, QLineEdit)
+from PySide6.QtWidgets import (QSizePolicy, QPushButton, QVBoxLayout, QHBoxLayout, QWidget, QLabel, QLineEdit, QComboBox)
 from PySide6.QtCore import (Slot, Signal)
 from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QFont, QFontDatabase, QGradient, QIcon,
     QImage, QKeySequence, QLinearGradient, QPainter,
     QPalette, QPixmap, QRadialGradient, QTransform)
+from enum import Enum
+from .song_downloader import DL_OPTIONS
+
+formats = {"MP3" : DL_OPTIONS.mp3, 
+           "M4A" : DL_OPTIONS.m4a, 
+           "FLAC" : DL_OPTIONS.flac}
 
 
 class DownloaderWidget(QWidget):
 
-    to_download_song = Signal(str)
+    to_download_song = Signal(str, DL_OPTIONS)
     to_preview_song = Signal(str)
     preview_checked = Signal()
 
@@ -36,6 +42,12 @@ class DownloaderWidget(QWidget):
         self.downloadButton.clicked.connect(self.download_song)
         self.layout.addWidget(self.downloadButton)
 
+        self.formatComboBox = QComboBox(self)
+        self.formatComboBox.addItems(formats.keys())
+        self.formatComboBox.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed))
+        self.formatComboBox.setMinimumWidth(80)
+        self.layout.addWidget(self.formatComboBox)
+
         self.previewButton.setEnabled(True)
         self.downloadButton.setEnabled(False)
 
@@ -47,7 +59,8 @@ class DownloaderWidget(QWidget):
         self.downloadButton.setEnabled(False)
 
     def download_song(self):
-        self.to_download_song.emit(self.downloader_lineEdit.text())
+        self.to_download_song.emit(self.downloader_lineEdit.text(), formats[self.formatComboBox.currentText()])
+        print(formats[self.formatComboBox.currentText()])
 
     def preview_song(self):
         self.to_preview_song.emit(self.downloader_lineEdit.text())
