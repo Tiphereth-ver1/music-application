@@ -8,7 +8,6 @@ TAG_MAP = {
     "artist": None,
     "album": None,
     "album_artist" : None,
-    ""
     "track": None,
     "track_total": None,
     "genre": None,

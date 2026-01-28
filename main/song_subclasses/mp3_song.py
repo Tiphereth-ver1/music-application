@@ -1,5 +1,5 @@
 from mutagen.mp3 import MP3
-from mutagen.id3 import ID3, TIT2, TPE1, TALB, TRCK, TYER, TDRC, TCON, COMM, APIC
+from mutagen.id3 import ID3, TIT2, TPE1, TALB, TRCK, TPE2, TDRC, TCON, COMM, APIC
 from PySide6.QtCore import QUrl, Signal, QObject
 from pathlib import Path
 import enum
@@ -9,6 +9,7 @@ TAG_MAP = {
     "title": TIT2,
     "artist": TPE1,
     "album": TALB,
+    "album_artist" : TPE2,
     "track": TRCK,
     "genre": TCON,
     "year": TDRC,

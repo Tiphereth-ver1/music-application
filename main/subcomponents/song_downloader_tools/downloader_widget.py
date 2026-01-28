@@ -11,10 +11,14 @@ formats = {"MP3" : DL_OPTIONS.mp3,
            "M4A" : DL_OPTIONS.m4a, 
            "FLAC" : DL_OPTIONS.flac}
 
+class MODES(Enum):
+    SINGLE = ""
+    PLAYLIST = ""
+
 
 class DownloaderWidget(QWidget):
-
     to_download_song = Signal(str, DL_OPTIONS)
+    to_download_playlist = Signal(DL_OPTIONS)
     to_preview_song = Signal(str)
     preview_checked = Signal()
 
@@ -22,6 +26,8 @@ class DownloaderWidget(QWidget):
         super().__init__(parent)
         self.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed))
         self.layout = QHBoxLayout(self)
+        self.mode = MODES.SINGLE
+
 
         self.downloader_label = QLabel("Youtube link:", self)
         self.layout.addWidget(self.downloader_label)
@@ -44,22 +50,36 @@ class DownloaderWidget(QWidget):
 
         self.formatComboBox = QComboBox(self)
         self.formatComboBox.addItems(formats.keys())
-        self.formatComboBox.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed))
-        self.formatComboBox.setMinimumWidth(80)
+        self.formatComboBox.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed))
+        self.formatComboBox.setMinimumWidth(50)
         self.layout.addWidget(self.formatComboBox)
 
         self.previewButton.setEnabled(True)
         self.downloadButton.setEnabled(False)
 
     @Slot(object)
-    def allow_download(self, _info):
+    def allow_single_download(self, _info):
+        self.downloadButton.setText("Download")
+        self.mode = MODES.SINGLE
+        self.downloadButton.setEnabled(True)
+
+    @Slot(object)
+    def allow_playlist_download(self, _info):
+        self.downloadButton.setText("Download All")
+        self.mode = MODES.PLAYLIST
         self.downloadButton.setEnabled(True)
 
     def invalidate_preview(self):
         self.downloadButton.setEnabled(False)
+    
+    def return_option(self) -> DL_OPTIONS:
+        return formats[self.formatComboBox.currentText()]
 
     def download_song(self):
-        self.to_download_song.emit(self.downloader_lineEdit.text(), formats[self.formatComboBox.currentText()])
+        if self.mode == MODES.SINGLE:
+            self.to_download_song.emit(self.downloader_lineEdit.text(), formats[self.formatComboBox.currentText()])
+        elif self.mode == MODES.PLAYLIST:
+            self.to_download_playlist.emit(formats[self.formatComboBox.currentText()])
         print(formats[self.formatComboBox.currentText()])
 
     def preview_song(self):

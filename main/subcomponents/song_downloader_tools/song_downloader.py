@@ -16,8 +16,35 @@ class DL_OPTIONS(Enum):
     flac = "flac"
 
 # This is an exercise in threading. There is a general seperation of concerns with threading that look like the following:
-# Job
-#
+
+def _bytes_from_url(url: str) -> bytes:
+    r = requests.get(url, timeout=10)
+    thumbnail_bytes = r.content
+    return thumbnail_bytes
+
+def select_album_art(info: dict) -> str | None:
+    thumbs = info.get("thumbnails") or []
+
+    # 1) square thumbnails (album art)
+    square = [
+        t for t in thumbs
+        if t.get("width") and t.get("height")
+        and t["width"] == t["height"]
+    ]
+
+    if square:
+        best = max(square, key=lambda t: t["width"])
+        print("square")
+        return best["url"]
+
+    # 2) fallback: best available thumbnail
+    if thumbs:
+        best = max(thumbs, key=lambda t: t.get("preference", -100))
+        print("normal")
+        return best["url"]
+    return None
+
+
 
 class DownloadJob:
     def __init__(self, url, opt : DL_OPTIONS, video_id: str):
@@ -54,33 +81,48 @@ class DownloadJob:
 
 class PreviewService(QObject):
     update_preview = Signal(dict)
+    update_playlist_preview = Signal(dict)
     failed = Signal()
 
     def __init__(self):
         super().__init__()
+    
+    @Slot(str)
+    def extract_playlist_preview(self, url):
+        ydl_opts = {
+                "quiet": True,
+                "extract_flat": True, 
+                "skip_download": True,
+            }
 
-    def select_album_art(self, info: dict) -> str | None:
-        thumbs = info.get("thumbnails") or []
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
 
-        # 1) square thumbnails (album art)
-        square = [
-            t for t in thumbs
-            if t.get("width") and t.get("height")
-            and t["width"] == t["height"]
-        ]
+            entries = info.get("entries") or []
+            id_dict = {}
+            for i, e in enumerate(entries, start=1):
+                title = e.get("title")
+                video_id = e.get("id")
+                uploader = e.get("uploader")
+                duration = e.get("duration")
 
-        if square:
-            best = max(square, key=lambda t: t["width"])
-            print("square")
-            return best["url"]
+                u = e.get("webpage_url") or e.get("original_url")
+                if not u and video_id:
+                    u = f"https://www.youtube.com/watch?v={video_id}"
 
-        # 2) fallback: best available thumbnail
-        if thumbs:
-            best = max(thumbs, key=lambda t: t.get("preference", -100))
-            print("normal")
-            return best["url"]
-        return None
+                if video_id and u:
+                    id_dict[video_id] = {
+                        "Index": i,
+                        "Link": u,
+                        "Title": title,
+                        "Uploader": uploader,
+                        "Duration": duration,
+                    }
 
+            self.update_playlist_preview.emit(id_dict)
+
+            # for id, info_pack in id_dict.items():
+            #     print(id, info_pack)
 
     @Slot(str)
     def extract_preview(self, url):
@@ -95,7 +137,7 @@ class PreviewService(QObject):
                 title = info.get('title', None)
                 video_id = info.get('id', None)
                 video_uploader = info.get('uploader', None)
-                thumbnail = self._bytes_from_url(self.select_album_art(info))
+                thumbnail = _bytes_from_url(select_album_art(info))
                 video_duration = info.get('duration_string', None)
 
                 info_package = {
@@ -109,13 +151,6 @@ class PreviewService(QObject):
                 self.update_preview.emit(info_package)
         except:
             self.failed.emit()
-    
-
-    def _bytes_from_url(self, url: str) -> bytes:
-        r = requests.get(url, timeout=10)
-        thumbnail_bytes = r.content
-        return thumbnail_bytes
-
 
 class DownloadService(QObject):
     progress = Signal(str, dict)   # job_id, payload
@@ -226,13 +261,14 @@ class DownloadService(QObject):
                 "ID": info.get("id"),
                 "Title": info.get("title"),
                 "Uploader": info.get("uploader"),
+                "ThumbnailURL" : select_album_art(info),
                 "Artist" : info.get("artist"),
                 "Title" : info.get("title"),
                 "Album" : info.get("album"),
             }
 
         # Choose video id: prefer job.video_id, fallback to hook info_dict
-        vid = (job.video_id if job else None) or info.get("ID")
+        vid = job.video_id or info.get("id")
         if not vid:
             self.failed.emit(job_id, f"No video id; cannot resolve output path. pp={pp}")
             return
@@ -257,9 +293,11 @@ class DownloadService(QObject):
 class DownloadManager(QObject):
     request_job = Signal(DownloadJob)
     request_preview = Signal(str)
+    request_playlist_preview = Signal(str)
     download_status = Signal(dict)
     updating_view = Signal()
     return_preview = Signal(object)
+    return_playlist_preview = Signal(dict)
 
     def __init__(self, parent = None):
         super().__init__(parent)
@@ -268,9 +306,9 @@ class DownloadManager(QObject):
         # Initialise thread for runnning
         self.download_thread = QThread()
         self.preview_thread = QThread()
-        self.preview_bytes_dict = {}
         self.processed_songs = []
         self.last_preview_video_id = None
+        self.last_playlist = dict()
         self.preview_url = None
         self.automatic_metadata = True
 
@@ -280,39 +318,65 @@ class DownloadManager(QObject):
 
         self.request_job.connect(self.download_service.enqueue)
         self.request_preview.connect(self.preview_service.extract_preview)
+        self.request_playlist_preview.connect(self.preview_service.extract_playlist_preview)
         self.download_service.progress.connect(self.request_status)
         self.download_service.finished.connect(self.write_metadata)
         self.download_service.finished.connect(lambda *args: print("FINISHED SIGNAL:", args))
         self.download_service.failed.connect(lambda job_id, err: print("FAILED", job_id, err))
         self.preview_service.failed.connect(lambda *args, err: print("FAILED", err))
+        self.preview_service.update_playlist_preview.connect(self.relay_playlist_preview)
 
         # self.download_service.update_view.connect(self.update_view)
         self.preview_service.update_preview.connect(self.relay_preview)
 
         self.download_thread.start()
         self.preview_thread.start()
-    
-    def request_enqueue(self, url : str, opt: DL_OPTIONS = DL_OPTIONS.mp3):
+            
+    def classify_input(self, url : str) -> None:
+        if 'playlist' in url:
+            self.playlist_preview(url)
+            print("playlist mode selected")
+        else:
+            self.preview_song(url)
+
+    def request_enqueue(self, url : str, opt: DL_OPTIONS = DL_OPTIONS.mp3, vid = None):
         if url.startswith("https://www.youtube.com") or url.startswith("https://music.youtube.com"):
-            vid = self.last_preview_video_id  # best if preview was run for this URL
+            if not vid:
+                vid = self.last_preview_video_id  # best if preview was run for this URL
             job = DownloadJob(url, opt, video_id=vid)
             self.request_job.emit(job)
 
         else:
             print("Invalid link")
     
+    def batch_request_enqueue(self,  opt : DL_OPTIONS = DL_OPTIONS.mp3):
+        print(self.last_playlist)
+        for id, info_dict in self.last_playlist.items():
+            print(opt,id)
+            job = DownloadJob(info_dict["Link"], opt, id)
+            self.request_job.emit(job)
+
     def preview_song(self, url : str):
         if url.startswith("https://www.youtube.com") or url.startswith("https://music.youtube.com"):
             self.request_preview.emit(url)
-            print("Song download requested")
+            print("Song preview requested")
         else:
             print("Invalid link")
+    
+    def playlist_preview(self, url : str):
+        if url.startswith("https://www.youtube.com") or url.startswith("https://music.youtube.com"):
+            self.request_playlist_preview.emit(url)
     
     def relay_preview(self, info : dict):
         self.return_preview.emit(info)
         self.last_preview_video_id = info.get("ID")
-        self.preview_bytes_dict[self.last_preview_video_id] = info.get("Thumbnail")
     
+    @Slot(dict)
+    def relay_playlist_preview(self, infodict : dict):
+        print("playlist preview relayed")
+        self.last_playlist = infodict
+        self.return_playlist_preview.emit(infodict)
+
     def song_select(self, filepath, final_ext):
         if final_ext == "mp3":
             song = MP3Song(filepath)
@@ -330,23 +394,25 @@ class DownloadManager(QObject):
             self.updating_view.emit()
             return
         
-        if job_id not in self.processed_songs:
-            song = self.song_select(filepath, final_ext)
-            print(filepath)
+        song = self.song_select(filepath, final_ext)
+        print(filepath)
 
-            song.update(
-                artist=info.get("Artist") or info.get("Uploader"),
-                title=info.get("Title"),
-                album=info.get("Album"),
-            )
+        song.update(
+            artist=info.get("Artist") or info.get("Uploader"),
+            title=info.get("Title"),
+            album=info.get("Album"),
+        )
 
-            song.rename_file()
+        song.rename_file()
 
-            art_bytes = self.preview_bytes_dict[info.get("ID")]
-            if art_bytes:
-                song.set_art_bytes(True, art_bytes)
-            self.updating_view.emit()
-            self.processed_songs.append(job_id)
+        thumb_url = info.get("ThumbnailURL")
+        if thumb_url:
+            art_bytes = _bytes_from_url(thumb_url)
+            song.set_art_bytes(True, art_bytes)
+            del art_bytes  # drop reference immediately
+
+        self.updating_view.emit()
+
 
     @Slot(str, dict)
     def request_status(self, job_id: str, d: dict) -> None:
@@ -376,7 +442,6 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
 
     downloadManager = DownloadManager()
-    downloadManager.request_enqueue("https://www.youtube.com/watch?v=gE7SmrBmXsg")
-    downloadManager.request_enqueue('https://www.youtube.com/watch?v=-NEGsRc3fbA')
+    downloadManager.playlist_preview("https://www.youtube.com/playlist?list=OLAK5uy_ksdxJNHsGSstuGy75Q6460PqGRg1lxbks")
 
     sys.exit(app.exec())

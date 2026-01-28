@@ -9,6 +9,7 @@ TAG_MAP = {
     "title": "TITLE",
     "artist": "ARTIST",
     "album": "ALBUM",
+    "album_artist" : "ALBUMARTIST",
     "track": "TRACKNUMBER",
     "genre": "GENRE",
     "year": "DATE",

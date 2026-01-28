@@ -1,15 +1,12 @@
-from .song_downloader_tools import DownloadManager, DownloaderWidget, InfoWidget, VideoPreviewWidget
-from PySide6.QtWidgets import (QSizePolicy, QPushButton, QVBoxLayout, QHBoxLayout, QWidget, QLabel, QLineEdit)
-from PySide6.QtCore import (Slot, Signal)
-from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
-    QFont, QFontDatabase, QGradient, QIcon,
-    QImage, QKeySequence, QLinearGradient, QPainter,
-    QPalette, QPixmap, QRadialGradient, QTransform)
+from .song_downloader_tools import DownloadManager, DownloaderWidget, InfoWidget, VideoPreviewWidget, DownloadItemDelegate, SongDownloadListModel, LINK_ROLE, ID_ROLE
+from PySide6.QtWidgets import (QSizePolicy, QListView, QVBoxLayout, QWidget)
+from PySide6.QtCore import (Slot, Signal, QModelIndex)
 
 
 class DownloaderView(QWidget):
     updating_view = Signal()
     update_preview = Signal(dict)
+    download_song = Signal(str, object, str)
 
     def __init__(self, parent = None):
         super().__init__(parent)
@@ -26,16 +23,40 @@ class DownloaderView(QWidget):
         self.info_widget = InfoWidget(self)
         self.internal_layout.addWidget(self.info_widget)
 
+        self.songs_download_view = QListView()
+        self.songs_download_view.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
+        self.songs_download_model = SongDownloadListModel()
+        self.delegate = DownloadItemDelegate(self.songs_download_view)
+        self.songs_download_view.setItemDelegate(self.delegate)
+        self.songs_download_view.setModel(self.songs_download_model)
+        self.delegate.item_pressed.connect(self.return_enqueue)
+        self.internal_layout.addWidget(self.songs_download_view, 3)
+
         self.internal_layout.addStretch(1)
         self.download_manager.download_status.connect(self.update_status)
         self.downloader_widget.to_download_song.connect(self.download_manager.request_enqueue)
-        self.downloader_widget.to_preview_song.connect(self.download_manager.preview_song)
+        self.download_song.connect(self.download_manager.request_enqueue)
+        self.downloader_widget.to_preview_song.connect(self.download_manager.classify_input)
         self.download_manager.return_preview.connect(self.preview_widget.update_preview)
-        self.download_manager.return_preview.connect(self.downloader_widget.allow_download)
+        self.download_manager.return_preview.connect(self.downloader_widget.allow_single_download)
+        self.download_manager.return_playlist_preview.connect(self.songs_download_model.update_song_list)
+        self.download_manager.return_playlist_preview.connect(self.downloader_widget.allow_playlist_download)
 
-    
-    
-    def update_status(self, infos : dict):
+    #  Legacy code, remember 
+    # @Slot(int)
+    # def return_enqueue(self, idx : int) -> None:
+    #     url, opt, video_id = self.songs_download_model.song_list[idx][1].get('Link'), self.downloader_widget.return_option(), self.songs_download_model.song_list[idx][0]
+    #     self.download_song.emit(url, opt, video_id)
+
+    @Slot(QModelIndex)
+    def return_enqueue(self, idx: QModelIndex) -> None:
+        url = idx.data(LINK_ROLE)
+        video_id = idx.data(ID_ROLE)
+        opt = self.downloader_widget.return_option()
+        self.download_song.emit(url, opt, video_id)
+        
+    @Slot(dict)
+    def update_status(self, infos : dict) -> None:
         for info in self.info_widget.info_boxes.keys():
             print(infos[info])
             self.info_widget.info_boxes[info].setText(str(infos[info]))

@@ -13,6 +13,7 @@ SINGLE_METADATA_FIELDS = [
     "title",
     "artist",
     "album",
+    "album_artist",
     "track",
     "genre",
     "year",
@@ -21,6 +22,7 @@ SINGLE_METADATA_FIELDS = [
 ALBUM_METADATA_FIELDS = [
     "artist",
     "album",
+    "album_artist",
     "track",
     "genre",
     "year",

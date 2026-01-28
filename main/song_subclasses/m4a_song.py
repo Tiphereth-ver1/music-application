@@ -9,6 +9,7 @@ class Tags(Enum):
     TITLE = "©nam"
     ARTIST =  "©ART"
     ALBUM = "©alb"
+    ALBUM_ARTIST = "aART"
     TRACK = "trkn"
     GENRE = "©gen"
     YEAR = "©day"
@@ -18,6 +19,7 @@ TAG_MAP = {
     "title": Tags.TITLE,
     "artist": Tags.ARTIST,
     "album": Tags.ALBUM,
+    "album_artist": Tags.ALBUM_ARTIST,
     "track": Tags.TRACK,
     "genre": Tags.GENRE,
     "year": Tags.YEAR,
