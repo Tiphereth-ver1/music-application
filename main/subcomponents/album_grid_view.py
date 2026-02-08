@@ -3,8 +3,8 @@ from PySide6.QtWidgets import (QApplication, QHBoxLayout, QGridLayout, QLabel, Q
     QMenu, QMenuBar, QSizePolicy, QStatusBar, QScrollArea,
     QVBoxLayout, QWidget)
 
-from .album_grid_view_components import Album, AlbumWidget, AlbumIndexer
-from ..song import Song
+from .album_grid_view_components import AlbumWidget, AlbumProvider
+from ..library_manager import LibraryService, AlbumMeta
 
 
 COLUMNS = 2
@@ -12,10 +12,11 @@ COLUMNS = 2
 class AlbumGridView(QWidget):
     album_clicked = Signal(object)  # emits Album instance
 
-    def __init__(self, parent = None):
+    def __init__(self, library : LibraryService, parent = None):
         super().__init__(parent)
-        self.album_indexer = AlbumIndexer()
-        self.album_indexer.album_changed.connect(self.update_ui)
+        self.album_provider = AlbumProvider(library)
+        self.album_provider.albums_changed.connect(self.update_ui)
+        self.lib = library
 
         # --- Scrollable album area ---
         self.scrollArea = QScrollArea()
@@ -34,7 +35,7 @@ class AlbumGridView(QWidget):
 
         layout = QVBoxLayout(self)
         layout.addWidget(self.scrollArea)
-
+        self.update_ui(self.album_provider.get_albums())
 
     def _clear(self):
         while self.gridLayout.count():
@@ -43,16 +44,13 @@ class AlbumGridView(QWidget):
             if widget:
                 widget.deleteLater()
 
-    def set_songs(self, songs: list[Song]):
-        self.album_indexer.set_songs(songs)
-        self.update_ui(self.album_indexer.get_albums())
 
-    def update_ui(self, albums: list[Album]):
+    def update_ui(self, albums: list[AlbumMeta]):
         self._clear()
         for album in albums:
             self.add_album(album)
 
-    def add_album(self, album: Album):
+    def add_album(self, album: AlbumMeta):
         index = self.gridLayout.count()
         row = index // COLUMNS  # COLUMNS = 4
         col = index % COLUMNS

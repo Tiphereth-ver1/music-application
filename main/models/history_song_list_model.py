@@ -1,26 +1,29 @@
 from PySide6.QtCore import QAbstractListModel, Qt, QModelIndex
 from PySide6.QtGui import QPixmap, QIcon
 from ..player import Player
+from ..library_manager import LibraryService
 
 class HistorySongListModel(QAbstractListModel):
     def __init__(self, player: Player, songs=None):
         super().__init__()
         self.player = player
+        self.lib : LibraryService = player.lib
         self._songs = list(player.history)
-        self._icons = {}
-
-
+        self._icons: dict[str, QIcon] = {}
 
         player.history_appended.connect(self.prepend_song)
         player.history_removed.connect(self.pop_front_song)
         player.history_modified.connect(self.sync_songs)
 
+    def _make_default_icon(self) -> QIcon:
+        pm = QPixmap(40, 40)
+        pm.fill(Qt.gray)
+        return QIcon(pm)
+
     def sync_songs(self):
         self.beginResetModel()
         self._songs = list(self.player.history)
         self.endResetModel()
-
-
 
     def rowCount(self, parent=None):
         # Return how many items are in the model
@@ -30,41 +33,49 @@ class HistorySongListModel(QAbstractListModel):
         if not index.isValid():
             return None
 
-        song = self._songs[index.row()]
+        song_id  = self._songs[index.row()]
+        meta = self.lib.get_song_meta(song_id)
 
         if role == Qt.DisplayRole:
-            return f"{song.get_info('title')} - {song.get_info('artist')}"
+            return f"{meta.title} - {meta.artist}"
         if role == Qt.DecorationRole:
-            if song not in self._icons:
-                pixmap = QPixmap()
-                if song.get_art():
-                    pixmap.loadFromData(song.get_art())
-                else:
-                    pixmap = QPixmap(250, 250)
-                    pixmap.fill(Qt.gray)
-                pixmap = pixmap.scaled(
-                    40, 40, Qt.KeepAspectRatio, Qt.SmoothTransformation
-                )
-                self._icons[song] = QIcon(pixmap)
-            return self._icons[song]
+            if not meta.cover_path:
+                return self._make_default_icon()
+
+            # Cache key per album cover (shared by many songs)
+            key = str(meta.cover_path)
+            icon = self._icons_by_cover.get(key)
+            if icon is not None:
+                return icon
+
+            cover_abs = str(meta.cover_path)
+
+            pm = QPixmap(str(cover_abs))
+            if pm.isNull():
+                return self._make_default_icon()
+
+            pm = pm.scaled(40, 40, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            icon = QIcon(pm)
+            self._icons_by_cover[key] = icon
+            return icon
         return None
-    
-    def append_song(self, song):
+
+    def append_song(self, song_id):
         row = len(self._songs)
         self.beginInsertRows(QModelIndex(), row, row)
-        self._songs.append(song)
+        self._songs.append(song_id)
         self.endInsertRows()
     
-    def prepend_song(self, song):
+    def prepend_song(self, song_id):
         self.beginInsertRows(QModelIndex(), 0, 0)
-        self._songs.insert(0,song)
+        self._songs.insert(0,song_id)
         self.endInsertRows()
     
-    def insert_song(self, idx, song):
+    def insert_song(self, idx, song_id):
         row = len(self._songs)
         if idx < row:
             self.beginInsertRows(QModelIndex(), idx, idx)
-            self._songs.insert(idx,song)
+            self._songs.insert(idx,song_id)
             self.endInsertRows()
 
     def pop_front_song(self):

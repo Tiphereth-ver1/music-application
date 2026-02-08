@@ -3,7 +3,7 @@ from mutagen.id3 import ID3, TIT2, TPE1, TALB, TRCK, TPE2, TDRC, TCON, COMM, API
 from PySide6.QtCore import QUrl, Signal, QObject
 from pathlib import Path
 import enum
-from ..song import Song
+from ..song import Song, sanitize_filename
 
 TAG_MAP = {
     "title": TIT2,
@@ -11,6 +11,7 @@ TAG_MAP = {
     "album": TALB,
     "album_artist" : TPE2,
     "track": TRCK,
+    "track_total":TRCK,
     "genre": TCON,
     "year": TDRC,
 }
@@ -68,8 +69,8 @@ class MP3Song(Song, QObject):
         self.audio.save(v2_version=3)
         self.emit_update(emit_update)
     
-    def set_path(self) -> None:
-        new_path = self.path.with_name(f'{self.get_info("title")}.mp3')
+    def set_path(self) -> Path:
+        new_path = self.path.with_name(sanitize_filename(f'{self.get_info("title")}.mp3'))
         if self.path ==  new_path:
             print("Target name is already name of the file.")
             return
@@ -78,6 +79,7 @@ class MP3Song(Song, QObject):
 
         self.path.rename(new_path)
         self.path = new_path
+        return self.path
 
     def update(self, **fields):
         for field, value in fields.items():

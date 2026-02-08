@@ -1,10 +1,10 @@
 from .playlist import Playlist
-from .song import Song
 from collections import deque
 from random import shuffle
 import logging
 logging.basicConfig(level=logging.DEBUG)
 from PySide6.QtCore import QObject, Signal
+from .library_manager import LibraryService
 
 from enum import Enum, auto
 
@@ -16,40 +16,41 @@ class LoopMode(Enum):
 class Player(QObject):
     queue_modified = Signal()
     history_modified = Signal()
-    history_appended = Signal(Song)
-    history_removed = Signal(Song)
-    queue_appended = Signal(Song)
-    queue_popped = Signal(Song)
-    queue_appended_front = Signal(Song)
+    history_appended = Signal(int)
+    history_removed = Signal(int)
+    queue_appended = Signal(int)
+    queue_popped = Signal(int)
+    queue_appended_front = Signal(int)
     '''
     To use a signal, define it outside of the initialisation. When in code, use self.function.emit()
     '''
 
-    def __init__(self):
+    def __init__(self, library : LibraryService):
         super().__init__()
+        self.lib = library
         self.playing = None
-        self.queue : deque[Song] = deque()
+        self.queue : deque[int] = deque()
         self.loop_mode : LoopMode = LoopMode.NONE
-        self.history : list[Song] = []
+        self.history : list[int] = []
         self.shuffle = False
 
     def _stop_playing(self):
         self.playing = None
 
-    def _log_playing(self, song: Song):
-        title, artist = song.get_info("title"), song.get_info("artist")
-        logging.info(f"Playing {title} by {artist}")
+    def _log_playing(self, song_id: int):
+        meta = self.lib.get_song_meta(song_id)
+        logging.info(f"Playing {meta.title} by {meta.artist}")
     
     def _begin_playback(self):
         if not self.playing and self.queue:
             self._set_playing(self._advance_queue())
 
-    def _push_history(self, song: Song) -> None:
-        if song:
-            self.history.append(song)
-            self.history_appended.emit(song)
+    def _push_history(self, song_id: int) -> None:
+        if song_id is not None:
+            self.history.append(song_id)
+            self.history_appended.emit(song_id)
     
-    def _pop_history(self) -> Song | None:
+    def _pop_history(self) -> int | None:
         if self.history:
             history = self.history.pop()
             self.history_removed.emit(history)
@@ -57,10 +58,10 @@ class Player(QObject):
             history = None
         return history
     
-    def _set_playing(self, song: Song) -> None:
-        self.playing = song
-        if song:
-            self._log_playing(song)
+    def _set_playing(self, song_id: int) -> None:
+        self.playing = song_id
+        if song_id is not None:
+            self._log_playing(song_id)
     
     def _can_advance(self) -> bool:
         '''
@@ -81,13 +82,13 @@ class Player(QObject):
         return False
     
 
-    def _advance_queue(self) -> Song | None:
-        song = self.queue.popleft()
-        if not song:
+    def _advance_queue(self) -> int | None:
+        song_id = self.queue.popleft()
+        if not song_id:
             return None
         
-        self.queue_popped.emit(song)
-        return song
+        self.queue_popped.emit(song_id)
+        return song_id
         
     def _advance_playback(self) -> None:
         self._push_history(self.playing)
@@ -98,41 +99,41 @@ class Player(QObject):
         self._set_playing(self._advance_queue())
 
 
-    def _queue_songs(self, songs : list[Song]) -> None:
-        for song in songs:
-            self._queue_song_back(song)
+    def _queue_songs(self, songs : list[int]) -> None:
+        for song_id in songs:
+            self._queue_song_back(song_id)
         # self.queue_modified.emit()
     
-    def _queue_songs_front(self, songs : list[Song]) -> None:
-        for song in reversed(songs):
-            self._queue_song_front(song)
+    def _queue_songs_front(self, songs : list[int]) -> None:
+        for song_id in reversed(songs):
+            self._queue_song_front(song_id)
         self.queue_modified.emit()
 
-    def _queue_song_back(self, song : Song) -> None:
-        self.queue.append(song)
-        self.queue_appended.emit(song)
+    def _queue_song_back(self, song_id : int) -> None:
+        self.queue.append(song_id)
+        self.queue_appended.emit(song_id)
 
-    def _queue_song_front(self, song : Song) -> None:
-        self.queue.appendleft(song)
-        self.queue_appended_front.emit(song)
+    def _queue_song_front(self, song_id : int) -> None:
+        self.queue.appendleft(song_id)
+        self.queue_appended_front.emit(song_id)
     
-    def _queue_song_index(self, index : int, song : Song) -> None:
+    def _queue_song_index(self, index : int, song_id : int) -> None:
         tmp = list(self.queue)
-        tmp.insert(index, song)
+        tmp.insert(index, song_id)
         self.queue = deque(tmp)
         self.queue_modified.emit()
 
-    def get_playing(self) -> Song:
+    def get_playing(self) -> int:
         return self.playing
 
     def toggle_loop(self, mode: LoopMode) -> None:
         self.loop_mode = mode
         logging.info(f"Set loop mode to {mode}")
 
-    def play_now(self,song):
+    def play_now(self,song_id):
         self.clear_queue()
         self._push_history(self.playing)
-        self._set_playing(song)
+        self._set_playing(song_id)
 
     def clear_queue(self):
         self.queue.clear()
@@ -171,11 +172,11 @@ class Player(QObject):
 
         if self.playing and self.history:
             self._queue_song_front(self.playing)
-            song = self._pop_history()
-            if song:
-                self._set_playing(song)
-            title,artist = self.playing.get_info("title"), self.playing.get_info("artist")
-            logging.info(f"Returned to previous track. Now playing {title} by {artist}")
+            song_id = self._pop_history()
+            if song_id is not None:
+                self._set_playing(song_id)
+            meta = self.lib.get_song_meta(self.playing)
+            logging.info(f"Returned to previous track. Now playing {meta.title} by {meta.artist}")
         elif not self.playing:
             logging.warning("Not currently playing a song!")
         elif not self.history:
@@ -188,14 +189,15 @@ class Player(QObject):
         
         '''
         if self.playing:
-            title = self.playing.get_info("title")
-            logging.info(f"Currently playing {title}")
+            meta = self.lib.get_song_meta(self.playing)
+            logging.info(f"Currently playing {meta.title}")
         else:
             logging.info("Nothing currently playing")
         if self.queue:
             logging.info("Current queue:")
-            for i, song in enumerate(self.queue, start=1):
-                title = song.get_info("title")
+            for i, song_id in enumerate(self.queue, start=1):
+                meta = self.lib.get_song_meta(song_id)
+                title = meta.title
                 logging.info(f"{i}. {title}")
     
     def return_queue(self):
@@ -213,12 +215,13 @@ class Player(QObject):
         self.queue_modified.emit()
     
     
-    def remove_song(self, song : Song):
-        if song in self.queue:
-            self.queue.remove(song)
-            logging.info(f"{song.get_info("title")} was removed from the queue\n")
+    def remove_song(self, song_id : int):
+        meta = self.lib.get_song_meta(song_id)
+        if song_id in self.queue:
+            self.queue.remove(song_id)
+            logging.info(f"{meta.title} was removed from the queue\n")
         else:
-            logging.warning(f"{song.get_info("title")} is not in queue!\n")
+            logging.warning(f"{meta.title} is not in queue!\n")
     
     def pop_song(self, index : int):
         if (0 <= index < len(self.queue)):

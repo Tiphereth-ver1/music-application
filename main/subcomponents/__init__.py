@@ -4,3 +4,6 @@ from .queue_history_display import QueueHistoryDisplay
 from .navigation_bar import NavigationBar
 from .album_select import AlbumSelect
 from .song_downloader_view import DownloaderView
+from .playlist_grid_view import PlaylistGridView
+from .playlist_select import PlaylistSelect
+from .song_search_view import SongSearchView

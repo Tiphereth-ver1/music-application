@@ -1,6 +1,7 @@
 from .song_downloader_tools import DownloadManager, DownloaderWidget, InfoWidget, VideoPreviewWidget, DownloadItemDelegate, SongDownloadListModel, LINK_ROLE, ID_ROLE
 from PySide6.QtWidgets import (QSizePolicy, QListView, QVBoxLayout, QWidget)
 from PySide6.QtCore import (Slot, Signal, QModelIndex)
+from ..library_manager import LibraryService
 
 
 class DownloaderView(QWidget):
@@ -8,9 +9,9 @@ class DownloaderView(QWidget):
     update_preview = Signal(dict)
     download_song = Signal(str, object, str)
 
-    def __init__(self, parent = None):
+    def __init__(self, library : LibraryService, parent = None):
         super().__init__(parent)
-        self.download_manager = DownloadManager(self)
+        self.download_manager = DownloadManager(library, self)
         self.download_manager.updating_view.connect(self.update_view)
         self.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
         self.internal_layout = QVBoxLayout(self)

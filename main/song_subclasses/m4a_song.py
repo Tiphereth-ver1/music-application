@@ -1,6 +1,6 @@
 from mutagen.mp4 import MP4, MP4Cover
 from enum import Enum
-from ..song import Song
+from ..song import Song, sanitize_filename
 from typing import Any
 
 
@@ -132,7 +132,7 @@ class M4ASong(Song):
         self.emit_update(emit_update)
 
     def set_path(self) -> None:
-        new_path = self.path.with_name(f'{self.get_info("title")}.m4a')
+        new_path = self.path.with_name(sanitize_filename(f'{self.get_info("title")}.m4a'))
         if self.path ==  new_path:
             print("Target name is already name of the file.")
             return
@@ -141,6 +141,7 @@ class M4ASong(Song):
 
         self.path.rename(new_path)
         self.path = new_path
+        return self.path
             
     def get_art(self) -> bytes | None:
         """Return the raw album art bytes, if any."""

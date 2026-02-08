@@ -3,7 +3,7 @@ from PySide6.QtCore import QUrl, Signal, QObject
 from pathlib import Path
 from typing import Any
 import enum
-from ..song import Song
+from ..song import Song, sanitize_filename
 
 TAG_MAP = {
     "title": "TITLE",
@@ -11,6 +11,7 @@ TAG_MAP = {
     "album": "ALBUM",
     "album_artist" : "ALBUMARTIST",
     "track": "TRACKNUMBER",
+    "track_total": "TRACKTOTAL",
     "genre": "GENRE",
     "year": "DATE",
 }
@@ -87,7 +88,7 @@ class FLACSong(Song):
         return str(vals[0])
     
     def set_path(self) -> None:
-        new_path = self.path.with_name(f'{self.get_info("title")}.flac')
+        new_path = self.path.with_name(sanitize_filename(f'{self.get_info("title")}.flac'))
         if self.path ==  new_path:
             print("Target name is already name of the file.")
             return
@@ -96,6 +97,7 @@ class FLACSong(Song):
 
         self.path.rename(new_path)
         self.path = new_path
+        return self.path
 
 
     def get_art(self) -> bytes | None:

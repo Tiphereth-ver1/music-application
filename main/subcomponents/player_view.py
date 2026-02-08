@@ -7,15 +7,16 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QPalette, QPixmap, QRadialGradient, QTransform)
 from PySide6.QtWidgets import (QSizePolicy,QVBoxLayout, QWidget)
 from .player_view_widgets import CoverSongLabel, ShuffleLoop, SongTime, Volume, PreviousPauseNext
+from ..library_manager import LibraryService
 
 class PlayerView(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, library : LibraryService, parent=None):
         super().__init__(parent)
 
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setMinimumSize(QSize(520, 640))
         self.layout = QVBoxLayout(self)
-        self.cover_song_label = CoverSongLabel(self)
+        self.cover_song_label = CoverSongLabel(library, self)
         self.song_time = SongTime(self)
         self.volume = Volume(self)
         self.previous_pause_next = PreviousPauseNext(self)

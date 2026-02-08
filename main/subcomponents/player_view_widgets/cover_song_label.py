@@ -10,14 +10,16 @@ from PySide6.QtWidgets import (QApplication, QHBoxLayout, QLabel, QMainWindow,
     QSlider, QSpacerItem, QStackedWidget, QStatusBar, QTabWidget,
     QVBoxLayout, QWidget)
 
-from ...song import Song
+from ...library_manager import LibraryService
+from pathlib import Path
 
 class CoverSongLabel(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, library : LibraryService, parent=None):
         super().__init__(parent)
         self.setMinimumSize(QSize(500, 300))
         self.layout = QVBoxLayout(self)
         self.layout.setObjectName(u"layout")
+        self.lib = library
 
         # --- Cover label ---
         self.coverLabel = QLabel()
@@ -31,29 +33,36 @@ class CoverSongLabel(QWidget):
         self.song_label.setAlignment(Qt.AlignCenter)
         self.layout.addWidget(self.song_label)
 
-    def update_now_playing(self,song: Song):
-        if not song:
+    def update_now_playing(self, song_id: int):
+        print(song_id)
+        if not song_id:
             self.song_label.setText("Nothing playing")
             return
-        title = song.get_info("title") or "Unknown Title"
-        artist = song.get_info("artist") or "Unknown Artist"
+    
+        meta = self.lib.get_song_meta(song_id)
+        title = meta.title or "Unknown Title"
+        artist = meta.artist or "Unknown Artist"
         self.song_label.setText(f"{title}\n{artist}")
-        self.reload_image(song.get_art())
+        self.reload_preview(self.coverLabel, meta.cover_path)
 
+    def reload_preview(self, label: QLabel, art_source: bytes | Path | str | None):
+        pixmap = QPixmap()
 
-    def reload_image(self, art_bytes):
-        if art_bytes:
-            pixmap = QPixmap()
-            pixmap.loadFromData(art_bytes)
+        if isinstance(art_source, (Path, str)):
+            # load from file path
+            if pixmap.load(str(art_source)):
+                pixmap = pixmap.scaled(label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            else:
+                pixmap = QPixmap(250, 250)
+                pixmap.fill(Qt.gray)
 
-            pixmap = pixmap.scaled(
-                self.coverLabel.size(),
-                Qt.KeepAspectRatio,
-                Qt.SmoothTransformation
-            )
+        elif isinstance(art_source, (bytes, bytearray)) and art_source:
+            # load from bytes
+            pixmap.loadFromData(bytes(art_source))
+            pixmap = pixmap.scaled(label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+
         else:
             pixmap = QPixmap(250, 250)
             pixmap.fill(Qt.gray)
 
-        self.coverLabel.setPixmap(pixmap)        
-
+        label.setPixmap(pixmap)

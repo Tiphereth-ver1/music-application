@@ -2,6 +2,9 @@ from PySide6.QtCore import QUrl, Signal, QObject
 from typing import Any
 from pathlib import Path
 from abc import ABC, abstractmethod
+import re
+import unicodedata
+
 
 TAG_MAP = {
     "title": None,
@@ -13,6 +16,39 @@ TAG_MAP = {
     "genre": None,
     "year": None,
 }
+
+WINDOWS_RESERVED = {
+    "CON", "PRN", "AUX", "NUL",
+    *(f"COM{i}" for i in range(1, 10)),
+    *(f"LPT{i}" for i in range(1, 10)),
+}
+
+ILLEGAL_CHARS = r'<>:"/\\|?*\x00-\x1F'
+
+def sanitize_filename(
+    name: str,
+    replacement: str = "_",
+    max_length: int = 255
+) -> str:
+    # Normalize Unicode (é vs e + ´ etc.)
+    name = unicodedata.normalize("NFKC", name)
+
+    # Replace illegal characters
+    name = re.sub(f"[{ILLEGAL_CHARS}]", replacement, name)
+
+    # Collapse whitespace
+    name = re.sub(r"\s+", " ", name).strip()
+
+    # Remove trailing dots/spaces (Windows rule)
+    name = name.rstrip(". ")
+
+    # Guard reserved device names
+    if name.upper() in WINDOWS_RESERVED:
+        name = f"_{name}"
+
+    # Final length clamp (leave room for extension)
+    return name[:max_length]
+
 
 class Song(QObject):
     changed = Signal()
@@ -29,7 +65,7 @@ class Song(QObject):
     
         self.initialise_audio(self.path)
 
-    def initialise_audio(self, path):
+    def initialise_audio(self, path) -> Path:
         raise NotImplementedError
 
     def set(self, field: str, value:Any | None):
@@ -52,8 +88,9 @@ class Song(QObject):
             self.changed.emit()
     
     def rename_file(self):
-        self.set_path()
+        path = self.set_path()
         self.initialise_audio(self.path)
+        return path
 
     def update(self, **fields):
         for field, value in fields.items():

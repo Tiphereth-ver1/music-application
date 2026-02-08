@@ -8,28 +8,32 @@ from .song_subclasses import M4ASong, MP3Song, FLACSong
 from .ui_mainwindow import Ui_MainWindow
 from .audio_engine import AudioEngine
 from .song import Song
+from .library_manager import LibraryService
 from . import Player, LoopMode
 
 LOOP_MODES = [LoopMode.NONE, LoopMode.PLAYLIST, LoopMode.SINGLE]
 
+from dataclasses import dataclass
+
+@dataclass(slots=True)
+class AppContext:
+    lib: LibraryService
+    player: Player
+    engine: AudioEngine
+
+
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, ctx : AppContext):
         super().__init__()
         self.resize(1000, 700)  # Ensure window is large enough for the layout
 
         # --- Audio engine ---
-        self.engine = AudioEngine()
-        self.player = self.engine.player
-
-        songs = self.filepath_to_songs()
-        # self.player._queue_songs(songs)
-        # self.player._begin_playback()
-        # self.engine.play_current()
-
-
+        self.lib = ctx.lib
+        self.player = ctx.player
+        self.engine = ctx.engine
 
         # --- Setup UI ---
-        self.ui = Ui_MainWindow(self.player)
+        self.ui = Ui_MainWindow(self.lib, self.player)
         # Attach the generated UI stack to this MainWindow so it is visible
         self.setCentralWidget(self.ui)
         self.swappable = self.ui.swappable
@@ -63,11 +67,6 @@ class MainWindow(QMainWindow):
         self.button_group.idClicked.connect(self.swappable.stack.setCurrentIndex)
 
         # --- Update queue/history when the player signals changes ---
-        # self.player.queue_appended.connect(self.queue_history_display.append_queue)
-        # self.player.queue_removed.connect(self.queue_history_display.pop_queue)
-        # self.player.queue_looped.connect(self.queue_history_display.loop_queue)
-        # self.player.history_appended.connect(self.queue_history_display.append_history)
-        # self.player.history_removed.connect(self.queue_history_display.pop_history)
         self.engine.song_ended.connect(self.next_song)
         self.ui.returning_song.connect(self.receive_song)
         self.ui.clearing_history.connect(self.clear_history)
@@ -81,27 +80,6 @@ class MainWindow(QMainWindow):
             self.engine.get_song_length()
         ))
         self.timer.start(500)  # update twice per second
-
-        # --- Initialize displays ---
-        # self.song_cover_label.update_now_playing(self.player.get_playing())
-        # self.queue_history_display.update_queue(self.player.queue)
-        # self.queue_history_display.update_history(self.player.history)
-        self.album_view.set_songs(songs)
-
-    def filepath_to_songs(self):
-        base_dir = Path(__file__).resolve().parent.parent
-        music_folder = base_dir / "music"
-        songs = []
-        for file_path in music_folder.rglob("*.mp3"):
-            rel_path = file_path.relative_to(base_dir)
-            songs.append(MP3Song(rel_path))
-        for file_path in music_folder.rglob("*.flac"):
-            rel_path = file_path.relative_to(base_dir)
-            songs.append(FLACSong(rel_path))
-        for file_path in music_folder.rglob("*.m4a"):
-            rel_path = file_path.relative_to(base_dir)
-            songs.append(M4ASong(rel_path))
-        return songs
 
     @Slot()
     def refresh_song_list(self):
@@ -169,14 +147,23 @@ class MainWindow(QMainWindow):
             self.player._queue_songs_front(songs)
             self.player._begin_playback()
             self.engine.play_current()
-            self.song_cover_label.update_now_playing(self.engine.player.get_playing())
+            self.song_cover_label.update_now_playing(self.player.get_playing())
 
 
 
 if __name__ == "__main__":
+    import time
+    pre_startup = round(time.time()*1000)
+    lib = LibraryService("music.db")
+    engine = AudioEngine(lib)
+    player = engine.player
+    ctx = AppContext(lib, player, engine)
+
     app = QApplication(sys.argv)
-    window = MainWindow()
+    window = MainWindow(ctx)
     window.show()
+    startup = round(time.time()*1000)
+    print(f"Application loading time : {startup - pre_startup}")
     sys.exit(app.exec())
 
 

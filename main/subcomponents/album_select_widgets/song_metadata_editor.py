@@ -23,7 +23,6 @@ ALBUM_METADATA_FIELDS = [
     "artist",
     "album",
     "album_artist",
-    "track",
     "genre",
     "year",
 ]

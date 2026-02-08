@@ -1,7 +1,7 @@
 from PySide6.QtCore import QAbstractListModel, Qt, QModelIndex, Qt, QRect, QSize, QEvent, Signal
 from PySide6.QtGui import QPixmap, QIcon, QPainter, QColor
 from PySide6.QtWidgets import QStyledItemDelegate, QStyle
-from ..album_grid_view_components import Album
+from ...library_manager import AlbumMeta
 
 TITLE_ROLE = Qt.UserRole + 1
 TIME_ROLE = Qt.UserRole + 2
@@ -85,16 +85,17 @@ class SongItemDelegate(QStyledItemDelegate):
 
         return False
 
-from ...song import Song
+from ...library_manager import LibraryService, AlbumMeta
 
 class AlbumSongListModel(QAbstractListModel):
-    def __init__(self, album: Album):
+    def __init__(self, library: LibraryService, album_meta: AlbumMeta):
         super().__init__()
-        self._songs = list(album.get_songs())
+        self.lib = library
+        self._song_ids = self.lib.get_album_song_ids(album_meta.id)
 
     def rowCount(self, parent=None):
         # Return how many items are in the model
-        return len(self._songs)
+        return len(self._song_ids)
     
     def _to_time(self, length) -> str:
         length = round(length)
@@ -107,18 +108,13 @@ class AlbumSongListModel(QAbstractListModel):
         if not index.isValid():
             return None
 
-        song = self._songs[index.row()]
+        song_id = self._song_ids[index.row()]
+        meta = self.lib.get_song_meta(song_id)
 
         if role == Qt.DisplayRole:
-            return f"{song.get_info('title')} -> {self._to_time(song.get_song_length())}"
+            return f"{meta.title} -> {self._to_time(meta.duration)}"
         if role == TITLE_ROLE:
-            return song.get_info('title')
+            return meta.title
         if role == TIME_ROLE:
-            return self._to_time(song.get_song_length())
-        # if role == Qt.DecorationRole:
-        #     pixmap = QPixmap(song.get_art())
-        #     if pixmap.loadFromData(song.get_art()):
-        #         # Optional: scale icon to a fixed size
-        #         pixmap = pixmap.scaled(40, 40, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        #         return QIcon(pixmap)
+            return self._to_time(meta.duration)
         return None  # fallback if no pixmap

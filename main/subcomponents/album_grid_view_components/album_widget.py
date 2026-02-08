@@ -10,13 +10,13 @@ from PySide6.QtWidgets import (QApplication, QHBoxLayout, QGridLayout, QLabel, Q
     QMenu, QMenuBar, QSizePolicy, QStatusBar, QScrollArea,
     QVBoxLayout, QWidget)
 
-from .album_indexer import AlbumIndexer
-from .album import Album
+from pathlib import Path
+from ...library_manager import AlbumMeta
 
 class AlbumWidget(QWidget):
     clicked = Signal()
 
-    def __init__(self, album: Album, parent = None):
+    def __init__(self, album: AlbumMeta, parent = None):
         super().__init__(parent)
         self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.setMinimumSize(200, 200)
@@ -32,28 +32,35 @@ class AlbumWidget(QWidget):
         self.CoverLabel.setObjectName(u"CoverLabel")
         self.CoverLabel.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.CoverLabel.setFixedSize(QSize(150, 150))
-        self.reload_preview(self.CoverLabel,album.get_cover())
+        self.reload_preview(self.CoverLabel,album.cover_path)
         verticalLayout.addWidget(self.CoverLabel)
 
         self.title_label = QLabel(self)
-        self.title_label.setText(album.info_check()[0])
+        self.title_label.setText(album.title)
         verticalLayout.addWidget(self.title_label)
     
-    def reload_preview(self, label: QLabel, art_bytes):
-        if art_bytes:
-            pixmap = QPixmap()
-            pixmap.loadFromData(art_bytes)
+    def reload_preview(self, label: QLabel, art_source: bytes | Path | str | None):
+        pixmap = QPixmap()
 
-            pixmap = pixmap.scaled(
-                label.size(),
-                Qt.KeepAspectRatio,
-                Qt.SmoothTransformation
-            )
+        if isinstance(art_source, (Path, str)):
+            # load from file path
+            if pixmap.load(str(art_source)):
+                pixmap = pixmap.scaled(label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            else:
+                pixmap = QPixmap(150, 150)
+                pixmap.fill(Qt.gray)
+
+        elif isinstance(art_source, (bytes, bytearray)) and art_source:
+            # load from bytes
+            pixmap.loadFromData(bytes(art_source))
+            pixmap = pixmap.scaled(label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+
         else:
             pixmap = QPixmap(150, 150)
             pixmap.fill(Qt.gray)
 
         label.setPixmap(pixmap)
+
     
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:

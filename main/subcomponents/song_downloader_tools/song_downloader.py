@@ -9,6 +9,7 @@ from collections import deque
 from copy import deepcopy
 import time, sys
 from ...song_subclasses import MP3Song, M4ASong, FLACSong
+from ...library_manager import LibraryService
 
 class DL_OPTIONS(Enum):
     mp3 = "mp3"
@@ -67,6 +68,7 @@ class DownloadJob:
         'postprocessors': [{  # Extract audio using ffmpeg
         'key': 'FFmpegExtractAudio',
         "preferredcodec": codec,
+        
 
     }],
         'preferredcodec': opt.value,
@@ -93,6 +95,8 @@ class PreviewService(QObject):
                 "quiet": True,
                 "extract_flat": True, 
                 "skip_download": True,
+                "js_runtimes": {"deno": {}},   # or {"node": {}}
+
             }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -137,7 +141,8 @@ class PreviewService(QObject):
                 title = info.get('title', None)
                 video_id = info.get('id', None)
                 video_uploader = info.get('uploader', None)
-                thumbnail = _bytes_from_url(select_album_art(info))
+                thumb_url = select_album_art(info)
+                thumbnail = _bytes_from_url(thumb_url) if thumb_url else None
                 video_duration = info.get('duration_string', None)
 
                 info_package = {
@@ -266,11 +271,12 @@ class DownloadService(QObject):
                 "Title" : info.get("title"),
                 "Album" : info.get("album"),
             }
-
         # Choose video id: prefer job.video_id, fallback to hook info_dict
         vid = job.video_id or info.get("id")
+        final_job_id = f"{job_id} : {info_parse["ID"]}"
+        print(final_job_id)
         if not vid:
-            self.failed.emit(job_id, f"No video id; cannot resolve output path. pp={pp}")
+            self.failed.emit(final_job_id, f"No video id; cannot resolve output path. pp={pp}")
             return
 
         final_ext = (job.opt.value if job else "mp3")
@@ -280,11 +286,11 @@ class DownloadService(QObject):
         # Windows latency / move guard
         for _ in range(50):  # ~2.5s
             if out_path.exists():
-                self.finished.emit(job_id, final_ext, str(out_path), info_parse)
+                self.finished.emit(final_job_id, final_ext, str(out_path), info_parse)
                 return
             time.sleep(0.05)
 
-        self.failed.emit(job_id, f"Expected output not found: {out_path} (pp={pp})")
+        self.failed.emit(final_job_id, f"Expected output not found: {out_path} (pp={pp})")
 
         print(info)
 
@@ -299,18 +305,19 @@ class DownloadManager(QObject):
     return_preview = Signal(object)
     return_playlist_preview = Signal(dict)
 
-    def __init__(self, parent = None):
+    def __init__(self, library : LibraryService, parent = None):
         super().__init__(parent)
         self.download_service = DownloadService()
         self.preview_service = PreviewService()
         # Initialise thread for runnning
         self.download_thread = QThread()
         self.preview_thread = QThread()
-        self.processed_songs = []
         self.last_preview_video_id = None
         self.last_playlist = dict()
+        self.processed_song_ids = set()
         self.preview_url = None
         self.automatic_metadata = True
+        self.lib = library
 
         # Moves the runtime of the service to the thread and starts it
         self.download_service.moveToThread(self.download_thread)
@@ -323,7 +330,7 @@ class DownloadManager(QObject):
         self.download_service.finished.connect(self.write_metadata)
         self.download_service.finished.connect(lambda *args: print("FINISHED SIGNAL:", args))
         self.download_service.failed.connect(lambda job_id, err: print("FAILED", job_id, err))
-        self.preview_service.failed.connect(lambda *args, err: print("FAILED", err))
+        self.preview_service.failed.connect(lambda: print("PREVIEW FAILED"))
         self.preview_service.update_playlist_preview.connect(self.relay_playlist_preview)
 
         # self.download_service.update_view.connect(self.update_view)
@@ -374,9 +381,10 @@ class DownloadManager(QObject):
     @Slot(dict)
     def relay_playlist_preview(self, infodict : dict):
         print("playlist preview relayed")
+        self.last_playlist.clear()
         self.last_playlist = infodict
         self.return_playlist_preview.emit(infodict)
-
+    
     def song_select(self, filepath, final_ext):
         if final_ext == "mp3":
             song = MP3Song(filepath)
@@ -386,16 +394,19 @@ class DownloadManager(QObject):
             song = FLACSong(filepath)
         return song
 
-    @Slot(str, str, dict) 
-    def write_metadata(self, job_id, final_ext, filepath, info):
+    @Slot(str, str, str, dict)
+    def write_metadata(self, job_id, final_ext, filepath, info) -> None:
+        print("WRITE_METADATA:", job_id, info.get("ID"), filepath)
+        if job_id in self.processed_song_ids:
+            print("aborted")
+            return
         print(final_ext)
-        print("metadata written")
+        print(filepath)
         if not self.automatic_metadata:
             self.updating_view.emit()
             return
         
-        song = self.song_select(filepath, final_ext)
-        print(filepath)
+        song = self.song_select(Path(filepath), final_ext)
 
         song.update(
             artist=info.get("Artist") or info.get("Uploader"),
@@ -403,22 +414,22 @@ class DownloadManager(QObject):
             album=info.get("Album"),
         )
 
-        song.rename_file()
-
         thumb_url = info.get("ThumbnailURL")
         if thumb_url:
             art_bytes = _bytes_from_url(thumb_url)
             song.set_art_bytes(True, art_bytes)
             del art_bytes  # drop reference immediately
 
-        self.updating_view.emit()
+        path = song.rename_file()
 
+        self.lib.upsert_song_from_path(path)
+        self.lib.post_edit_check()
+        self.processed_song_ids.add(job_id)
+        print("metadata written")
 
     @Slot(str, dict)
     def request_status(self, job_id: str, d: dict) -> None:
-        '''
-        Docstring for request_status
-        
+        '''        
         :param self: Description
         :param job_id: Description
         :type job_id: str

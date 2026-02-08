@@ -1,3 +1,3 @@
-from .album import Album
-from .album_indexer import AlbumIndexer
+# from .album import Album
+from .album_provider import AlbumProvider
 from .album_widget import AlbumWidget

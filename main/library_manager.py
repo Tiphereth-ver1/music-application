@@ -2,83 +2,91 @@ from pathlib import Path
 import sqlite3
 from typing import Iterator
 from .song_subclasses import MP3Song, M4ASong, FLACSong
-from . import Song
+from .song import Song
 from PySide6.QtCore import QObject, Signal
+from enum import Enum
+import hashlib
+import time
 
+def cache_image_bytes(data: bytes | None, cache_dir: Path, ext=".jpg") -> Path | None:
+    if not data:
+        return None
+    digest = hashlib.sha256(data).hexdigest()
+    path = cache_dir / f"{digest}{ext}"
 
-#SQLite basics! Creating a conn tool to have an accessible database.
-# conn = sqlite3.connect("music.db")
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "wb") as f:
+            f.write(data)
 
-#Cursor tool is connected to conn to execute commands
-# cursor = conn.cursor()
+    return path
 
-#Executing cursoe commands take place inside """ and are saved with commit()
-#INTEGER PRIMARY KEY is an automatically assigned "id" that allows for indexing of songs and other things
-#UNIQUE is a tag that adds a check to make sure all elements of that are unique
-# cursor.execute("""
-# DROP TABLE songs
-# """)
-# conn.commit()
+class RETURN_VALUES(Enum):
+    ID = "id"
+    TITLE = "title"
+    ALBUM = "album"
+    ARTIST = "artist"
+    ALBUM_ARTIST = "album_artist"
+    DURATION = "duration"
+    FILE_PATH = "file_path"
+    FILE_EXTENSION = "file_extension"
+    MTIME = "mtime"
+    SIZE = "size"
 
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional
 
-# cursor.execute("""
-# CREATE TABLE IF NOT EXISTS songs (
-#     id INTEGER PRIMARY KEY,
-#     title TEXT,
-#     artist TEXT,
-#     album TEXT,
-#     file_path TEXT UNIQUE NOT NULL,
-#     duration REAL,
-#     file_extension TEXT,
-#     mtime INTEGER
-# )
-# """)
-# conn.commit()
+@dataclass(frozen=True, slots=True)
+class SongMeta:
+    """
+    SongMeta class. Designed to be more lightweight in RAM usage than the song class with no direct access to file art.
+    """
+    id: int
+    title: str | None
+    artist: str | None
+    album: str | None
+    album_artist: str | None
+    duration: float
+    track: int | None
+    track_total: int | None
+    year: int | None
+    file_path: Path          # relative path from DB
+    cover_path: Optional[Path]  # relative, from albums table
 
+@dataclass(frozen=True, slots=True)
+class AlbumMeta:
+    id: int
+    title: str
+    album_artist: str
+    year: int | None
+    cover_path: Optional[Path]   # relative
 
-# conn.commit()
+@dataclass(frozen=True, slots=True)
+class PlaylistMeta:
+    id: int
+    name: str
+    cover_path: Optional[Path]   # relative
 
-# The ideal way to insert values into a db, to prevent SQL injection
-# cursor.execute("""
-# INSERT INTO songs (title, artist, album, file_path, duration)
-# VALUES (?, ?, ?, ?, ?)
-# """, (title, artist, album, path, duration))
-
-# conn.commit()
-
-"""
-SELECT * FROM songs; -> General selection a group
-SELECT title, artist FROM songs WHERE album = 'Album Y'; -> FROM provides location of target group and WHERE provides conditions for actual selection
-DELETE FROM songs WHERE id = 3; -> Deletion with WHERE and FROM
-DROP TABLE songs -> used to remove an existing table
-UPDATE songs
-SET title = 'New Title'
-WHERE id = 3;
-"""
-
-# Upserting example, a method that allows handling of duplicates more effectively
-
-# cursor.execute("""
-#     INSERT INTO songs (title, artist, album, file_path, duration, file_extension)
-#     VALUES (?, ?, ?, ?, ?, ?)
-#     ON CONFLICT(file_path) DO UPDATE SET
-#         title=excluded.title,
-#         artist=excluded.artist,
-#         album=excluded.album,
-#         duration=excluded.duration,
-#         file_extension=excluded.file_extension
-# """, (...))
-
-RETURN_VALUES = ["id","title","artist","album","file_path","duration","file_extension","mtime"]
 
 class LibraryService(QObject):
+    library_changed = Signal()
+    playlists_changed = Signal()
 
-    def __init__(self):
+    def __init__(self, db_path: Path):
         super().__init__()
+        self.conn = sqlite3.connect(db_path)
+        self.conn.execute("PRAGMA foreign_keys = ON")
+        self.cursor = self.conn.cursor()
         self._song_cache: dict[int, Song] = {}
-        # self.conn = sqlite3.connect("music.db")
-        # self.cursor = self.conn.cursor()
-        pass
+        self._meta_cache: dict[int, SongMeta] = {}
+        
+        pre_startup = round(time.time()*1000)
+        # self._clear_database()
+        self._initialise_database()
+        self.scan_library()
+        startup = round(time.time()*1000)
+        print(f"DB initialisation time : {startup - pre_startup}")
 
     def _base_dir(self) -> Path:
         return Path(__file__).resolve().parent.parent
@@ -89,9 +97,27 @@ class LibraryService(QObject):
     def _to_abs(self, rel_path: Path) -> Path:
         return self._base_dir() / rel_path
 
+    def _clear_database(self) -> None:
+        with self.conn:
+            self.conn.execute("PRAGMA foreign_keys = OFF;")
 
-    def _initialise_database(self, conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
-        cursor.execute("""
+            for (name,) in self.conn.execute("""
+                SELECT name FROM sqlite_master WHERE type='trigger';
+            """).fetchall():
+                self.conn.execute(f'DROP TRIGGER IF EXISTS "{name}";')
+
+            for (name,) in self.conn.execute("""
+                SELECT name FROM sqlite_master WHERE type='view';
+            """).fetchall():
+                self.conn.execute(f'DROP VIEW IF EXISTS "{name}";')
+
+            for table in ("playlist_songs", "playlists", "songs", "albums"):
+                self.conn.execute(f'DROP TABLE IF EXISTS "{table}";')
+
+            self.conn.execute("PRAGMA foreign_keys = ON;")
+
+    def _initialise_database(self) -> None:
+        self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS albums (
                 id INTEGER PRIMARY KEY,
                 title TEXT NOT NULL,
@@ -99,8 +125,9 @@ class LibraryService(QObject):
                 year INTEGER,
                 cover_path TEXT,
                 UNIQUE(title, album_artist)
-            );
+            );""")
 
+        self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS songs (
                 id INTEGER PRIMARY KEY,
                 title TEXT,
@@ -110,13 +137,44 @@ class LibraryService(QObject):
                 album_id INTEGER,
                 file_path TEXT UNIQUE NOT NULL,
                 duration REAL,
+                year INTEGER,
+                track INTEGER,
+                track_total INTEGER,
                 file_extension TEXT,
                 mtime INTEGER NOT NULL,
                 size INTEGER NOT NULL,
                 FOREIGN KEY(album_id) REFERENCES albums(id)
             );
             """)
-        conn.commit()
+        
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS playlists (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                created_at INTEGER,
+                updated_at INTEGER,
+                cover_path TEXT, 
+                UNIQUE(name));
+                """)
+
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS playlist_songs (
+                playlist_id INTEGER NOT NULL,
+                song_id INTEGER NOT NULL,
+                position INTEGER,
+                PRIMARY KEY (playlist_id, song_id),
+                FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE,
+                FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE CASCADE);
+                """)
+        
+        self.cursor.execute("""
+        UPDATE songs SET
+        title_fold  = lower(title),
+        artist_fold = lower(artist),
+        album_fold  = lower(album);
+        """)
+
+        self.conn.commit()
 
     def _initialise_song(self, file_path: Path) -> tuple[Song, str] | None:
         suf = file_path.suffix.lower()
@@ -127,19 +185,99 @@ class LibraryService(QObject):
         if suf == ".flac":
             return (FLACSong(file_path), "FLAC")
         return None
-
-    def enumerate_audio_files(self) -> list[Path]:
-        base_dir = Path(__file__).resolve().parent.parent
-        music_folder = base_dir / "music"
-        files : list[Path] = []
-        for pattern in ("*.mp3", "*.m4a", "*.flac"):
-            files.extend(music_folder.rglob(pattern))
-        return files
     
-    def upsert_album(self, cursor, album_name, album_artist):
-        pass
+    def get_song_info(self, song_id : int, return_value: RETURN_VALUES) -> str:
+        column = return_value.value
+        self.cursor.execute(
+            f"SELECT {column} FROM songs WHERE id = ?",
+            (song_id,)
+        )
+        row = self.cursor.fetchone()[0]
+        return str(row)
+    
+    def get_song_meta(self, song_id: int) -> SongMeta:
+        cached = self._meta_cache.get(song_id)
+        if cached is not None:
+            return cached
 
-    def upsert_song_from_path(self, conn, cursor, song: Song, abs_path: Path) -> None:
+        self.cursor.execute("""
+            SELECT
+                s.id, s.title, s.artist, s.album, s.album_artist,
+                s.duration, s.year, s.track, s.track_total, 
+                s.file_path, a.cover_path
+            FROM songs s
+            LEFT JOIN albums a ON a.id = s.album_id
+            WHERE s.id = ?
+        """, (song_id,))
+        row = self.cursor.fetchone()
+        if row is None:
+            raise KeyError(f"No song with id={song_id}")
+
+        (sid, title, artist, album, album_artist,
+            duration, year, track, track_total, file_path, cover_path) = row
+
+        song_meta = SongMeta(
+            id=sid,
+            title=title,
+            artist=artist,
+            album=album,
+            album_artist=album_artist,
+            duration=float(duration or 0.0),
+            year=year,
+            track=track,
+            track_total=track_total,
+            file_path=Path(file_path),
+            cover_path=Path(cover_path) if cover_path else None
+        )
+
+        self._meta_cache[song_id] = song_meta
+        return song_meta
+
+    def _upsert_album(self, title: str, album_artist: str, year: int | None, cover_path: str | None) -> int:
+        self.cursor.execute(
+            """
+            INSERT INTO albums (title, album_artist, year, cover_path)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(title, album_artist) DO UPDATE SET
+                year = COALESCE(excluded.year, albums.year),
+                cover_path = COALESCE(excluded.cover_path, albums.cover_path)
+        """, (title, album_artist, year, cover_path))
+
+        self.cursor.execute("""
+        SELECT id FROM albums
+        WHERE title = ? AND album_artist = ?
+        """, (title, album_artist))
+        row = self.cursor.fetchone()[0]
+        return row
+
+    def scan_library(self) -> dict:
+        counts = {"added": 0, "updated": 0, "unchanged": 0}
+        with self.conn:  # commits if success, rollbacks on exception
+            for abs_path in self.enumerate_audio_files():
+                r, _ = self.upsert_song_from_path(abs_path)
+                counts[r] += 1
+            self._album_removal()
+        self.library_changed.emit()
+        return counts
+    
+    def _album_removal(self) -> None:
+        self.cursor.execute("""
+                    DELETE FROM albums
+            WHERE id NOT IN (
+            SELECT DISTINCT album_id FROM songs WHERE album_id IS NOT NULL
+            );
+            """)
+
+    def post_album_edit_check(self) -> None:
+        with self.conn:  # commits if success, rollbacks on exception
+            self._album_removal()
+        self.library_changed.emit()
+
+    def post_playlist_edit_check(self) -> None:
+        self.playlists_changed.emit()
+
+
+    def upsert_song_from_path(self, abs_path: Path) -> tuple[str, Song | None]:
         rel_path = self._to_rel(abs_path)
         rel_str = str(rel_path)
 
@@ -147,92 +285,92 @@ class LibraryService(QObject):
         mtime = int(st.st_mtime)
         size = int(st.st_size)
 
-
-        cursor.execute("SELECT id, mtime, size FROM songs WHERE file_path = ?", (rel_str,))
-        row = cursor.fetchone()
-
+        self.cursor.execute("SELECT id, mtime, size FROM songs WHERE file_path = ?", (rel_str,))
+        row = self.cursor.fetchone()
+    
         if row is None:
             # new file -> parse tags
-            song, ext = self._initialise_song(abs_path)
-            album_id = self.upsert_album(cursor, song.get_info("album"), song.get_info("album_artist"))
-            cursor.execute("""
-                INSERT INTO songs (title, artist, album_id, file_path, duration, file_extension, mtime, size)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (...))
-            return "added"
+            init = self._initialise_song(abs_path)
+            if init is None:
+                return "unchanged"
+            song, ext = init
+
+            art_dir = self._base_dir() / "cache" / "album_art"
+            cover_abs = cache_image_bytes(song.get_art(), art_dir, ext=".jpg")
+            cover_rel = str(cover_abs.relative_to(self._base_dir())) if cover_abs else None
+
+            #check to have either album artist or artist as an album
+            album, album_artist = self._album_info_check(song)
+
+            album_id = self._upsert_album(album, album_artist, song.get_info("year"), cover_rel)
+            self.cursor.execute("""
+                INSERT INTO songs (title, artist, album, album_artist, album_id, file_path, duration, year, track, track_total, file_extension, mtime, size)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (song.get_info("title"),
+                song.get_info("artist"),
+                album,
+                album_artist,
+                album_id,
+                rel_str,
+                song.get_song_length(),
+                song.get_info("year"),
+                song.get_info("track"),
+                song.get_info("track_total"),
+                ext,
+                mtime,
+                size))
+
+            self.conn.commit()
+            return "added", song
 
         song_id, old_mtime, old_size = row
         if old_mtime == mtime and old_size == size:
-            return "unchanged"
+            return "unchanged", None
 
         # changed -> re-parse tags and update
-        song, ext = self._initialise_song(abs_path)
-        album_id = self.upsert_album(cursor, song.get_info("album"), song.get_info("album_artist"))
+        init = self._initialise_song(abs_path)
+        if init is None:
+            return "unchanged", None  # or raise
+        song, ext = init
 
-        cursor.execute("""
+        art_dir = self._base_dir() / "cache" / "album_art"
+        cover_abs = cache_image_bytes(song.get_art(), art_dir, ext=".jpg")
+        cover_rel = str(cover_abs.relative_to(self._base_dir())) if cover_abs else None
+
+        #check to have either album artist or artist as an album
+        album, album_artist = self._album_info_check(song)
+        album_id = self._upsert_album(album, album_artist, song.get_info("year"), cover_rel)
+
+        self.cursor.execute("""
             UPDATE songs
-            SET title=?, artist=?, album_id=?, duration=?, file_extension=?, mtime=?, size=?
+            SET title=?, artist=?, album=?, album_artist=?, album_id=?, file_path=?, duration=?, year=?, track=?, track_total=?, file_extension=?, mtime=?, size=?
             WHERE id=?
         """, (song.get_info("title"),
         song.get_info("artist"),
         song.get_info("album"),
-        song.get_info("album_artist"),
+        album_artist,
         album_id,
+        rel_str,
         song.get_song_length(),
+        song.get_info("year"),
+        song.get_info("track"),
+        song.get_info("track_total"),
         ext,
         mtime,
         size,
         song_id
     ))
+        self.conn.commit()
 
         self.invalidate_song(song_id)
-        return "updated"
+        return "updated", song
 
-
-
-    def filepath_to_songs(self, conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
-        base_dir = Path(__file__).resolve().parent.parent
-        music_folder = base_dir / "music"
-
-        def insert_or_update(song: Song, rel_path: Path, ext_label: str, mtime: int) -> None:
-            cursor.execute("""
-                INSERT INTO songs (title, artist, album, album_artist, file_path, duration, file_extension, mtime)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(file_path) DO UPDATE SET
-                    title = excluded.title,
-                    artist = excluded.artist,
-                    album = excluded.album,
-                    duration = excluded.duration,
-                    file_extension = excluded.file_extension,
-                    mtime = excluded.mtime
-            """, (
-                song.get_info("title"),
-                song.get_info("artist"),
-                song.get_info("album"),
-                song.get_info("album_artist"),
-                str(rel_path),
-                song.get_song_length(),
-                ext_label,
-                mtime
-            ))
-
-        for file_path in self.enumerate_audio_files():
-            init = self._initialise_song(file_path)
-            if init is None:
-                continue
-            song, ext = init
-            rel_path = file_path.relative_to(base_dir)
-            mtime = int(file_path.stat().st_mtime)
-            insert_or_update(song, rel_path, ext, mtime)
-
-        conn.commit()
-
-    def SongFactory(self, cursor: sqlite3.Cursor, song_id: int) -> Song:
+    def SongFactory(self, song_id: int) -> Song:
         if song_id in self._song_cache:
             return self._song_cache[song_id]
 
-        cursor.execute("SELECT file_path FROM songs WHERE id = ?", (song_id,))
-        row = cursor.fetchone()
+        self.cursor.execute("SELECT file_path FROM songs WHERE id = ?", (song_id,))
+        row = self.cursor.fetchone()
         if row is None:
             raise KeyError(f"No song with id={song_id}")
 
@@ -242,22 +380,213 @@ class LibraryService(QObject):
 
         init = self._initialise_song(abs_path)
         if init is None:
-            raise ValueError(f"Unsupported file type: {abs_path}")
+            return "unchanged"
+        song, ext = init
 
-        song, _ = init
         self._song_cache[song_id] = song
         return song
     
-    def invalidate_song(self, song_id: int):
+    def songs_from_ids(self, ids: list[int]) -> list[Song]:
+        return [self.SongFactory(i) for i in ids]
+    
+    def get_matching_songs(self, text : str) -> list[int]:
+        print(text)
+        self.cursor.execute("""
+        SELECT id, title, album_artist, album, artist
+        FROM songs
+        WHERE title_fold  LIKE lower(?) || '%'
+        OR artist_fold LIKE lower(?) || '%'
+        OR album_fold  LIKE lower(?) || '%'
+        LIMIT 200;
+        """, (text,text, text,))
+        return [r[0] for r in self.cursor.fetchall()]
+
+
+    def _album_info_check(self, song : Song) -> tuple[str,str]:
+        album = song.get_info("album")
+        if not album:
+            album = "Unknown Album"
+
+        album_artist = song.get_info("album_artist")
+        if not album_artist:
+            album_artist = song.get_info("artist")
+        if not album_artist:
+            album_artist = "Unknown Artist"
+        
+        return album, album_artist
+
+    
+    def enumerate_audio_files(self) -> list[Path]:
+        base_dir = Path(__file__).resolve().parent.parent
+        music_folder = base_dir / "music"
+        files : list[Path] = []
+        for pattern in ("*.mp3", "*.m4a", "*.flac"):
+            files.extend(music_folder.rglob(pattern))
+        return files
+
+    def abs_song_path(self, song_id: int) -> Path:
+        meta = self.get_song_meta(song_id)
+        return self._to_abs(meta.file_path)
+
+    def abs_cover_path(self, song_id: int) -> Path | None:
+        meta = self.get_song_meta(song_id)
+        if meta.cover_path is None:
+            return None
+        return self._to_abs(meta.cover_path)
+
+
+    def invalidate_song(self, song_id: int) -> None:
         self._song_cache.pop(song_id, None)
+        self._meta_cache.pop(song_id, None)
+
+    def get_albums(self) -> list[AlbumMeta]:
+        self.cursor.execute("""
+            SELECT id, title, album_artist, year, cover_path
+            FROM albums
+            ORDER BY album_artist COLLATE NOCASE, title COLLATE NOCASE
+        """)
+        rows = self.cursor.fetchall()
+        return [
+            AlbumMeta(
+                id=aid,
+                title=title,
+                album_artist=album_artist,
+                year=year,
+                cover_path=Path(cover) if cover else None
+            )
+            for (aid, title, album_artist, year, cover) in rows
+        ]
+
+    def get_album_song_ids(self, album_id: int) -> list[int]:
+        self.cursor.execute("""
+            SELECT id
+            FROM songs
+            WHERE album_id = ?
+            ORDER BY COALESCE(track, 999), title COLLATE NOCASE
+        """, (album_id,))
+        return [r[0] for r in self.cursor.fetchall()]
+
+    def abs_album_cover_path(self, album_id: int) -> Path | None:
+        self.cursor.execute("SELECT cover_path FROM albums WHERE id = ?", (album_id,))
+        row = self.cursor.fetchone()
+        if not row or not row[0]:
+            return None
+        return self._to_abs(Path(row[0]))
+    
+    def get_songs_from_playlist(self, playlist_id : int) -> list[int]:
+        self.cursor.execute("""
+            SELECT song_id 
+            FROM playlist_songs
+            WHERE playlist_id = ?
+            ORDER BY COALESCE(position, 999)
+            """,(playlist_id,))
+        return [r[0] for r in self.cursor.fetchall()]
+    
+    def upsert_playlist(self, name : str):
+        self.cursor.execute("""
+        INSERT INTO playlists (name, created_at, updated_at)
+        VALUES (?,?,?)
+        ON CONFLICT(name) DO UPDATE SET
+                cover_path = COALESCE(excluded.cover_path, playlists.cover_path)
+        """, (name, 0, 0))
+        self.conn.commit()
+
+    def modify_playlist(self, playlist_id : int, name : str, cover_path : str):
+        self.cursor.execute("""
+            UPDATE playlists
+            SET name = ?, cover_path = ?
+            WHERE id = ?;
+        """, (name, cover_path, playlist_id))
+
+        if self.cursor.rowcount == 0:
+            raise KeyError(f"Playlist {playlist_id} does not exist")
+
+        self.conn.commit()
 
 
+    def get_playlists(self) -> list[PlaylistMeta]:
+        self.cursor.execute("""
+            SELECT id, name, cover_path
+            FROM playlists
+            ORDER BY name COLLATE NOCASE
+        """)
+        rows = self.cursor.fetchall()
+        return [
+            PlaylistMeta(
+                id=pid,
+                name=name,
+                cover_path=Path(cover) if cover else None
+            )
+            for (pid, name, cover) in rows
+        ]
 
-library_service = LibraryService()
-conn = sqlite3.connect("music.db")
-cursor = conn.cursor()
-library_service.filepath_to_songs(conn, cursor)
-song = library_service.SongFactory(cursor, 1)
-print(song.get_info("title"))
-song = library_service.SongFactory(cursor, 21)
-print(song.get_info("title"))
+    def delete_playlist(self, playlist_id : int) -> None :
+        self.cursor.execute("""
+            DELETE FROM playlists
+            WHERE id = ?
+
+        """, (playlist_id,))
+
+    def _exists(self, table: str, id_: int) -> bool:
+        self.cursor.execute(f"SELECT 1 FROM {table} WHERE id = ? LIMIT 1;", (id_,))
+        return self.cursor.fetchone() is not None
+
+    def insert_into_playlist(self, *, song_id: int, playlist_id: int) -> None:
+        # next position from DB
+        self.cursor.execute(
+            """
+            SELECT COALESCE(MAX(position), 0) + 1
+            FROM playlist_songs
+            WHERE playlist_id = ?
+            """,
+            (playlist_id,)
+        )
+        (next_pos,) = self.cursor.fetchone()
+        print(next_pos)
+
+        self.cursor.execute(
+            """
+            INSERT OR IGNORE INTO playlist_songs (playlist_id, song_id, position)
+            VALUES (?, ?, ?)
+            """,
+            (playlist_id, song_id, next_pos)
+        )
+        self.conn.commit()
+
+    def close(self):
+        self.conn.close()
+
+if __name__ == "__main__":
+    library = LibraryService("music.db")
+    results = library.get_matching_songs("vIVID")
+    for result in results:
+        print(result)
+    # library._clear_database()
+    # library._initialise_database()
+    # library.upsert_playlist("Watashi ga Star")
+    # library.upsert_playlist("I like trains")
+    # library.upsert_playlist("I hate niggers")
+    # library.upsert_playlist("Ai♡Scream")
+    # print(library._exists("playlists", 1))
+    # print(library._exists("songs", 108))
+    # print(library._exists("songs", 109))
+    # library.insert_into_playlist(song_id = 43,playlist_id = 2)
+    # library.insert_into_playlist(song_id = 152, playlist_id = 2)
+    # library.insert_into_playlist(song_id = 221, playlist_id = 2)
+    # for song in library.get_album_song_ids(9):
+    #     library.insert_into_playlist(song_id = song, playlist_id = 3)
+    # library.insert_into_playlist(song_id = 57,playlist_id = 1)
+    # library.insert_into_playlist(song_id = 58, playlist_id = 1)
+
+    # songs = library.get_songs_from_playlist(1)
+    # for id in songs:
+    #     print(library.get_song_info(id, RETURN_VALUES.TITLE))
+    
+    # library.delete_playlist(1)
+    # playlists = library.get_playlists()
+    # for playlist in playlists:
+    #     print(playlist.name)
+    # library.upsert_playlist("Watashi ga Star")
+    # playlists = library.get_playlists()
+    # for playlist in playlists:
+    #     print(playlist.name)

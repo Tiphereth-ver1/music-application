@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (QApplication, QHBoxLayout, QLabel, QMainWindow,
 
 from ..models import QueueSongListModel, HistorySongListModel
 from ..player import Player
+from pathlib import Path
 
 class QueueHistoryDisplay(QWidget):
     clearing_queue = Signal()
@@ -83,18 +84,24 @@ class QueueHistoryDisplay(QWidget):
 
 
 
-    def reload_preview(self, label: QLabel, art_bytes):
-        if art_bytes:
-            pixmap = QPixmap()
-            pixmap.loadFromData(art_bytes)
+    def reload_preview(self, label: QLabel, art_source: bytes | Path | str | None):
+        pixmap = QPixmap()
 
-            pixmap = pixmap.scaled(
-                label.size(),
-                Qt.KeepAspectRatio,
-                Qt.SmoothTransformation
-            )
+        if isinstance(art_source, (Path, str)):
+            # load from file path
+            if pixmap.load(str(art_source)):
+                pixmap = pixmap.scaled(label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            else:
+                pixmap = QPixmap(150, 150)
+                pixmap.fill(Qt.gray)
+
+        elif isinstance(art_source, (bytes, bytearray)) and art_source:
+            # load from bytes
+            pixmap.loadFromData(bytes(art_source))
+            pixmap = pixmap.scaled(label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+
         else:
-            pixmap = QPixmap(50, 50)
+            pixmap = QPixmap(150, 150)
             pixmap.fill(Qt.gray)
 
         label.setPixmap(pixmap)
