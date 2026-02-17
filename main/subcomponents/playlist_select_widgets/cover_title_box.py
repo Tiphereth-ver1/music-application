@@ -11,7 +11,6 @@ class CoverTitleBox(QWidget):
         self.text_font = QFont()
         self.text_font.setPointSize(12)
 
-
         self.cover_title_box = QWidget(self)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.setMinimumSize(QSize(600, 250))

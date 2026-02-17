@@ -12,9 +12,9 @@ COLUMNS = 2
 class PlaylistGridView(QWidget):
     playlist_clicked = Signal(object)  # emits Playlist instance
 
-    def __init__(self, library : LibraryService, parent = None):
+    def __init__(self, library : LibraryService, playlist_provider : PlaylistProvider, parent = None):
         super().__init__(parent)
-        self.playlist_provider = PlaylistProvider(library)
+        self.playlist_provider = playlist_provider
         self.playlist_provider.playlists_changed.connect(self.update_ui)
         self.lib = library
 

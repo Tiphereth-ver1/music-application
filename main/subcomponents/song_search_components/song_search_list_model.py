@@ -2,16 +2,25 @@ from PySide6.QtCore import QAbstractListModel, Qt, QModelIndex, Qt, QRect, QSize
 from PySide6.QtGui import QPixmap, QIcon, QPainter, QColor
 from PySide6.QtWidgets import QStyledItemDelegate, QStyle
 from ...library_manager import PlaylistMeta
+
 TITLE_ROLE = Qt.UserRole + 1
 TIME_ROLE = Qt.UserRole + 2
+PLAY_ROLE = Qt.UserRole + 3
+QUEUE_ROLE = Qt.UserRole + 4
+ADD_ROLE = Qt.UserRole + 5
 
-PLAY_RECT = QRect(14, 14, 30, 30)
-
-PLAY_RECT2 = QRect(44, 14, 30, 30)
+def colored_icon(path, color):
+    pixmap = QPixmap(path)
+    painter = QPainter(pixmap)
+    painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
+    painter.fillRect(pixmap.rect(), QColor(color))
+    painter.end()
+    return QIcon(pixmap)
 
 class SongItemDelegate(QStyledItemDelegate):
     song_pressed = Signal(int, str)
     to_modify_song = Signal(str, int)
+    add_song_to_playlist = Signal(int)
     def paint(self, painter, option, index):
         painter.save()
 
@@ -21,9 +30,10 @@ class SongItemDelegate(QStyledItemDelegate):
 
         icon1, icon2, icon3 = self._icon_rects(option)
 
-        painter.fillRect(icon1, QColor(150, 150, 255))
-        painter.fillRect(icon2, QColor(255, 150, 150))
-        painter.fillRect(icon3, QColor(150, 255, 150))
+        for icon_rect, role in zip((icon1, icon2, icon3), (PLAY_ROLE, QUEUE_ROLE, ADD_ROLE)):
+            icon = index.data(role)
+            if icon and isinstance(icon, QIcon):
+                icon.paint(painter, icon_rect, Qt.AlignCenter)
 
         # Text
         painter.drawText(
@@ -73,7 +83,7 @@ class SongItemDelegate(QStyledItemDelegate):
                 return True
 
             if icon3.contains(pos):
-                self.to_modify_song.emit("single", index.row())
+                self.add_song_to_playlist.emit(index.row())
                 return True
 
         return False
@@ -113,4 +123,11 @@ class SongSerachListModel(QAbstractListModel):
             return f"{meta.title} - {meta.artist}"
         if role == TIME_ROLE:
             return self._to_time(meta.duration)
+        if role == PLAY_ROLE:
+            return colored_icon(":/assets/icons/Play.svg", "white")
+        if role == QUEUE_ROLE:
+            return colored_icon(":/assets/icons/QueueLast.svg", "white")
+        if role == ADD_ROLE:
+            return colored_icon(":/assets/icons/Plus.svg", "white")
+
         return None

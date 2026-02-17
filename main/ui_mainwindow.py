@@ -12,6 +12,8 @@ class Ui_MainWindow(QWidget):
     updating_view = Signal()
     clearing_queue = Signal()
     clearing_history = Signal()
+    perform_action = Signal(str)
+    
     def __init__(self, library : LibraryService, player: Player, parent = None):
         super().__init__(parent)
         self.layout = QHBoxLayout(self)
@@ -27,15 +29,24 @@ class Ui_MainWindow(QWidget):
         self.swappable.returning_song.connect(self.return_songs)
         self.rightbar = QueueHistoryDisplay(player, self)
         self.rightbar.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Expanding)
-        self.rightbar.setMinimumSize(QSize(250, 600))
+        self.rightbar.setMinimumSize(QSize(200, 600))
         self.rightbar.clearing_history.connect(self.clear_history)
         self.rightbar.clearing_queue.connect(self.clear_queue)
+        self.leftbar.toggle_queue.connect(self.toggle_queue)
+
         self.swappable.updating_view.connect(self.update_view)
+        self.swappable.perform_action.connect(self.send_action)
 
         self.layout.addWidget(self.leftbar)
         self.layout.addWidget(self.swappable)
         self.layout.addWidget(self.rightbar)
         self.layout.setStretchFactor(self.swappable, 1)
+
+    def toggle_queue(self):
+        if self.rightbar.isVisible():
+            self.rightbar.hide()
+        else:
+            self.rightbar.show()
 
     def return_songs(self, songs, mode):
         self.returning_song.emit(songs, mode)
@@ -48,6 +59,9 @@ class Ui_MainWindow(QWidget):
     
     def update_view(self):
         self.updating_view.emit()
+
+    def send_action(self, action : str):
+        self.perform_action.emit(action)
 
 
 

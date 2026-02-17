@@ -59,9 +59,7 @@ class DownloaderView(QWidget):
     @Slot(dict)
     def update_status(self, infos : dict) -> None:
         for info in self.info_widget.info_boxes.keys():
-            print(infos[info])
             self.info_widget.info_boxes[info].setText(str(infos[info]))
-        print("updated status")
     
     @Slot()
     def update_view(self):

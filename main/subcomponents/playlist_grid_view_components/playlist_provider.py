@@ -1,8 +1,9 @@
 from PySide6.QtCore import Signal, QObject
-from ...library_manager import LibraryService, PlaylistMeta  # wherever AlbumMeta lives
+from ...library_manager import LibraryService, PlaylistMeta
+import logging 
 
 class PlaylistProvider(QObject):
-    playlists_changed = Signal(object)  # emit list[AlbumMeta]
+    playlists_changed = Signal(object) 
 
     def __init__(self, library: LibraryService, parent=None):
         super().__init__(parent)
@@ -13,6 +14,7 @@ class PlaylistProvider(QObject):
 
     def refresh(self) -> None:
         """Requery playlist from DB and notify UI."""
+        logging.debug("refresh triggered")
         self._playlists = self.lib.get_playlists()
         self.playlists_changed.emit(self._playlists)
 

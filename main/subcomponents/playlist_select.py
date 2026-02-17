@@ -6,17 +6,22 @@ from PySide6.QtWidgets import (QApplication, QLabel, QScrollArea, QHBoxLayout, Q
 
 from ..library_manager import PlaylistMeta, LibraryService
 from .playlist_select_widgets import PlaylistSongListModel, SongItemDelegate, PlaylistEditor, ButtonBox
+from .playlist_grid_view_components import PlaylistProvider
 from ..song import Song
 from pathlib import Path
 
 class PlaylistSelect(QWidget):
     returning_song = Signal(list, str)
     returning_playlist = Signal(list, str)
+    toggle_add_mode = Signal(PlaylistMeta)
+    signal_playlist_update = Signal()
+    delete_song_from_row = Signal(int)
 
-    def __init__(self, library: LibraryService, playlist_meta: PlaylistMeta, parent=None):
+    def __init__(self, library: LibraryService, playlist_provider : PlaylistProvider, playlist_meta: PlaylistMeta, parent=None):
         super().__init__(parent)
         self.internal_layout = QVBoxLayout(self)
         self.lib = library
+        self.playlist_provider = playlist_provider
         self.playlist_meta = playlist_meta
         self.song_ids = self.lib.get_songs_from_playlist(self.playlist_meta.id)
 
@@ -43,17 +48,21 @@ class PlaylistSelect(QWidget):
         self.buttons = ButtonBox(self)
         self.buttons.add_queue_playlist.connect(self.return_playlist)
         self.buttons.edit_playlist.connect(self.modify_playlist)
+        self.buttons.set_playlist_to_add.connect(self.set_playlist_to_add)
         self.title_button_box_layout.addWidget(self.buttons)
         self.cover_title_box_layout.addWidget(self.title_button_box)
 
         self.internal_layout.addWidget(self.cover_title_box)
 
-
         self.song_view = QListView()
         self.playlist_model = PlaylistSongListModel(self.lib, playlist_meta)
         self.delegate = SongItemDelegate(self.song_view)
         self.song_view.setItemDelegate(self.delegate)
+
         self.delegate.song_pressed.connect(self.return_song)
+        self.delegate.to_delete_song.connect(self.delete_song)
+        self.delete_song_from_row.connect(self.playlist_model.remove_song)
+        self.signal_playlist_update.connect(self.playlist_provider.refresh)
 
         self.song_view.setModel(self.playlist_model)
         self.song_view.setIconSize(QSize(40,40))  # must set icon size
@@ -66,6 +75,9 @@ class PlaylistSelect(QWidget):
         self.back_button.setFixedHeight(40)
         self.internal_layout.addWidget(self.back_button)
 
+    def update_playlist(self, playlist_meta : PlaylistMeta) -> None:
+        self.playlist_meta = playlist_meta
+    
     def _reload_preview(self, label: QLabel, art_source: bytes | Path | str | None):
         pixmap = QPixmap()
 
@@ -87,12 +99,11 @@ class PlaylistSelect(QWidget):
             pixmap.fill(Qt.gray)
 
         label.setPixmap(pixmap)
-
         
     def update_ui(self):
         song_ids = self.lib.get_songs_from_playlist(self.playlist_meta.id)
-        name = self.playlist_meta.name
-        self.title_Label.setText(f"{name}")
+        title = self.playlist_meta.title
+        self.title_Label.setText(f"{title}")
         length = len(song_ids)
         self._reload_preview(self.cover_Label, self.playlist_meta.cover_path)
 
@@ -109,9 +120,27 @@ class PlaylistSelect(QWidget):
         dialog = PlaylistEditor(self, self.lib, self.playlist_meta)
         if dialog.exec() == QDialog.Accepted:
             try:
-                name, cover_path = dialog.get_info()
-                print(self.playlist_meta.id)
-                self.lib.modify_playlist(self.playlist_meta.id, name, cover_path)
+                title, cover_path = dialog.get_info()
+                num = self.playlist_meta.id
+                print(num)
+                self.lib.modify_playlist(num, title, cover_path)
+                self.update_playlist(self.lib.get_playlist_meta_by_id(num))
             finally:
                 pass
-        self.lib.post_playlist_edit_check()
+        self.signal_playlist_update.emit()
+        self.update_ui()
+
+    def set_playlist_to_add(self) -> None:
+        print("set playlist to add was triggered")
+        self.toggle_add_mode.emit(self.playlist_meta)
+    
+    def delete_song(self, idx : int):
+        try:
+            song_idx = self.song_ids[idx]
+            num = self.playlist_meta.id
+            self.lib.remove_from_playlist(song_id = song_idx, playlist_id = num)
+            self.update_ui()
+            self.delete_song_from_row.emit(idx)
+            self.song_ids = self.lib.get_songs_from_playlist(self.playlist_meta.id)
+        finally:
+            pass

@@ -1,7 +1,7 @@
 import sys
 from PySide6.QtWidgets import QApplication, QMainWindow
 from PySide6.QtCore import Slot, QTimer
-from PySide6.QtGui import (QPixmap)
+from PySide6.QtGui import (QPixmap, QPalette, QColor)
 from pathlib import Path
 from .song_subclasses import M4ASong, MP3Song, FLACSong
 
@@ -9,7 +9,7 @@ from .ui_mainwindow import Ui_MainWindow
 from .audio_engine import AudioEngine
 from .song import Song
 from .library_manager import LibraryService
-from . import Player, LoopMode
+from . import Player, LoopMode, resources_rc, load_theme, get_str_path
 
 LOOP_MODES = [LoopMode.NONE, LoopMode.PLAYLIST, LoopMode.SINGLE]
 
@@ -43,14 +43,15 @@ class MainWindow(QMainWindow):
         self.album_view = self.swappable.album_view
         self.player_view = self.swappable.player_view
         self.button_group = self.navigation_bar.button_group
+        self.cases = {
+            "shuffle" : self.shuffle,
+            "previous" : self.previous_song,
+            "pause" : self.pause,
+            "next" : self.next_song,
+            "loop" : self.loop
+        }
 
         self.song_cover_label = self.player_view.cover_song_label
-
-        self.nextButton = self.player_view.previous_pause_next.nextButton
-        self.previousButton = self.player_view.previous_pause_next.previousButton
-        self.pauseButton = self.player_view.previous_pause_next.pauseButton
-        self.shuffleButton = self.player_view.shuffle_loop.shuffleButton
-        self.loopButton = self.player_view.shuffle_loop.loopButton
 
         # --- Button wiring ---
         '''
@@ -58,20 +59,14 @@ class MainWindow(QMainWindow):
         How does it work? By finding an event (Signals from QObjects emitted as a signal),
         you can perform a function by passing in the object form of the function to be called.
         '''
-
-        self.nextButton.clicked.connect(self.next_song)
-        self.previousButton.clicked.connect(self.previous_song)
-        self.pauseButton.clicked.connect(self.pause)
-        self.shuffleButton.clicked.connect(self.shuffle)
-        self.loopButton.clicked.connect(self.loop)
         self.button_group.idClicked.connect(self.swappable.stack.setCurrentIndex)
-
         # --- Update queue/history when the player signals changes ---
         self.engine.song_ended.connect(self.next_song)
         self.ui.returning_song.connect(self.receive_song)
         self.ui.clearing_history.connect(self.clear_history)
         self.ui.clearing_queue.connect(self.clear_queue)
         self.ui.updating_view.connect(self.refresh_song_list)
+        self.ui.perform_action.connect(self.perform_player_action)
 
         # --- Timer for updating song progress ---
         self.timer = QTimer(self)
@@ -81,11 +76,19 @@ class MainWindow(QMainWindow):
         ))
         self.timer.start(500)  # update twice per second
 
+    @Slot(str)
+    def perform_player_action(self, action: str):
+        """Lookup the action in the cases dict and execute it."""
+        func = self.cases.get(action)
+        if func:
+            func()
+        else:
+            logging.warning(f"[Warning] Unknown player action: {action}")
+        
     @Slot()
     def refresh_song_list(self):
         songs = self.filepath_to_songs()
         self.album_view.set_songs(songs)
-        print("song list refreshed")
 
     def stop_playing(self):
         self.player._stop_playing()
@@ -150,9 +153,11 @@ class MainWindow(QMainWindow):
             self.song_cover_label.update_now_playing(self.player.get_playing())
 
 
-
 if __name__ == "__main__":
-    import time
+    from PySide6.QtCore import QFileSystemWatcher
+    import time, logging, os
+
+    logging.basicConfig(level=logging.DEBUG) # Sets the threshold to DEBUG
     pre_startup = round(time.time()*1000)
     lib = LibraryService("music.db")
     engine = AudioEngine(lib)
@@ -160,7 +165,32 @@ if __name__ == "__main__":
     ctx = AppContext(lib, player, engine)
 
     app = QApplication(sys.argv)
+
+    theme = "suika_kaiju"
+    path = get_str_path(theme)
+    print(path)
+
+    app.setStyleSheet(load_theme(theme))
+
+    app.theme_watcher = QFileSystemWatcher()
+    app.theme_watcher.addPath(str(path))
+
+    def reload_theme(changed_path):
+        if not os.path.exists(changed_path):
+            return
+
+        app.setStyleSheet(load_theme(theme))
+        print("theme reloaded")
+
+        if changed_path not in app.theme_watcher.files():
+            app.theme_watcher.addPath(changed_path)
+
+    app.theme_watcher.fileChanged.connect(reload_theme)
+
+
+
     window = MainWindow(ctx)
+    window.setWindowTitle("Ringo Music")
     window.show()
     startup = round(time.time()*1000)
     print(f"Application loading time : {startup - pre_startup}")

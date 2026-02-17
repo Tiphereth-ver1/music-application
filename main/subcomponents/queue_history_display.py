@@ -6,7 +6,7 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
 from PySide6.QtWidgets import (QApplication, QHBoxLayout, QLabel, QMainWindow,
     QMenuBar, QProgressBar, QPushButton, QSizePolicy, QScrollArea,
     QSlider, QSpacerItem, QStackedWidget, QStatusBar, QTabWidget,
-    QVBoxLayout, QWidget, QListView)
+    QVBoxLayout, QWidget, QListView, QAbstractItemView)
 
 from ..models import QueueSongListModel, HistorySongListModel
 from ..player import Player
@@ -41,6 +41,7 @@ class QueueHistoryDisplay(QWidget):
         self.queue_tab_layout.setObjectName(u"queue_tab_layout")
 
         self.queue_view = QListView()
+        self.initialise_movement(self.queue_view)
         self.queue_model = QueueSongListModel(player)
         self.queue_view.setModel(self.queue_model)
         self.queue_view.setIconSize(QSize(40,40))  # must set icon size
@@ -60,6 +61,7 @@ class QueueHistoryDisplay(QWidget):
         self.history_tab_layout.setObjectName("history_tab_layout")
 
         self.history_view = QListView()
+        self.initialise_movement(self.history_view)
         self.history_model = HistorySongListModel(player)
         self.history_view.setModel(self.history_model)
         self.history_view.setIconSize(QSize(40,40))
@@ -82,7 +84,12 @@ class QueueHistoryDisplay(QWidget):
         main_layout.addWidget(self.tabWidget)
         self.setLayout(main_layout)
 
-
+    def initialise_movement(self, view : QListView):
+        view.setDragEnabled(True)
+        view.setAcceptDrops(True)
+        view.setDropIndicatorShown(True)
+        view.setDragDropMode(QAbstractItemView.InternalMove)
+        view.setDefaultDropAction(Qt.MoveAction)
 
     def reload_preview(self, label: QLabel, art_source: bytes | Path | str | None):
         pixmap = QPixmap()

@@ -80,7 +80,6 @@ class DownloaderWidget(QWidget):
             self.to_download_song.emit(self.downloader_lineEdit.text(), formats[self.formatComboBox.currentText()])
         elif self.mode == MODES.PLAYLIST:
             self.to_download_playlist.emit(formats[self.formatComboBox.currentText()])
-        print(formats[self.formatComboBox.currentText()])
 
     def preview_song(self):
         self.to_preview_song.emit(self.downloader_lineEdit.text())

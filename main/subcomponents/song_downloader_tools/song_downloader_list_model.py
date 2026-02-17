@@ -2,6 +2,17 @@ from PySide6.QtCore import QAbstractListModel, Qt, QModelIndex, Qt, QRect, QSize
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QStyledItemDelegate, QStyle
 
+DOWNLOAD_ROLE = Qt.UserRole + 1
+
+def colored_icon(path, color):
+    pixmap = QPixmap(path)
+    painter = QPainter(pixmap)
+    painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
+    painter.fillRect(pixmap.rect(), QColor(color))
+    painter.end()
+    return QIcon(pixmap)
+
+
 class DownloadItemDelegate(QStyledItemDelegate):
     item_pressed = Signal(QModelIndex)
 
@@ -15,7 +26,10 @@ class DownloadItemDelegate(QStyledItemDelegate):
                 painter.fillRect(option.rect, option.palette.highlight())
 
             icon1 = self._icon_rect(option)
-            painter.fillRect(icon1, QColor(150, 150, 255))
+            icon1 = index.data(DOWNLOAD_ROLE)
+            if icon and isinstance(icon, QIcon):
+                icon.paint(painter, icon_rect, Qt.AlignCenter)
+
 
             painter.drawText(
                 option.rect.adjusted(20, 0, 0, 0),
@@ -66,7 +80,6 @@ class SongDownloadListModel(QAbstractListModel):
         )
         self.endResetModel()
 
-        print(self.song_list)
 
     def rowCount(self, parent=None):
         return len(self.song_list)
@@ -87,8 +100,6 @@ class SongDownloadListModel(QAbstractListModel):
             return f"{info.get('Title')} - {info.get('Uploader')}"
         if role == TIME_ROLE:
             return self._to_time(info.get('Duration'))
-        if role == LINK_ROLE:
-            return info.get("Link")
-        if role == ID_ROLE:
-            return video_id
+        if role == DOWNLOAD_ROLE:
+            return colored_icon(":/assets/icons/Downloader.svg", "white")
         return None

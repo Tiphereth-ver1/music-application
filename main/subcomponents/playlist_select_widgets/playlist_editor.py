@@ -10,7 +10,7 @@ import mimetypes
 from enum import Enum
 
 FIELDS = [
-    "name",
+    "title",
 ]
 
 
@@ -95,7 +95,7 @@ class PlaylistEditor(QDialog):
                 field = MetadataField(metadata.lower(), self)
                 self.internal_layout.addWidget(field)
                 self.fields[metadata] = field
-                self.fields[metadata].set_value(self.playlist_meta.name)
+                self.fields[metadata].set_value(self.playlist_meta.title)
             
         self.button_box.accepted.connect(self.accept)
         self.button_box.rejected.connect(self.reject)
@@ -128,8 +128,7 @@ class PlaylistEditor(QDialog):
 
 
     def get_info(self):
-        print(self.fields["name"].value(),str(self.cover_path))
-        return self.fields["name"].value(),str(self.cover_path)
+        return self.fields["title"].value(),str(self.cover_path)
 
     
     def select_new_art(self) -> bytes:

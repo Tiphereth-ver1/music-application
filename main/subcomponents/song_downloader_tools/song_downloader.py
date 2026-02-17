@@ -10,6 +10,7 @@ from copy import deepcopy
 import time, sys
 from ...song_subclasses import MP3Song, M4ASong, FLACSong
 from ...library_manager import LibraryService
+import logging
 
 class DL_OPTIONS(Enum):
     mp3 = "mp3"
@@ -35,13 +36,11 @@ def select_album_art(info: dict) -> str | None:
 
     if square:
         best = max(square, key=lambda t: t["width"])
-        print("square")
         return best["url"]
 
     # 2) fallback: best available thumbnail
     if thumbs:
         best = max(thumbs, key=lambda t: t.get("preference", -100))
-        print("normal")
         return best["url"]
     return None
 
@@ -125,12 +124,10 @@ class PreviewService(QObject):
 
             self.update_playlist_preview.emit(id_dict)
 
-            # for id, info_pack in id_dict.items():
-            #     print(id, info_pack)
 
     @Slot(str)
     def extract_preview(self, url):
-        print("Dowload starting")
+        logging.debug("Dowload starting")
         ydl_opts = {
             "quiet": True,
             "skip_download": True,
@@ -171,6 +168,7 @@ class DownloadService(QObject):
         self._cancel_current = False
         self._last_update = 0
         self._jobs_by_id: dict[str, DownloadJob] = {}
+        self._job_ids : set = set()
 
 
     @Slot(object)
@@ -256,43 +254,54 @@ class DownloadService(QObject):
 
         pp = str(d.get("postprocessor") or "")
 
-        if "ExtractAudio" not in pp and "MoveFiles" not in pp:
+        if "MoveFiles" not in pp:
             return
 
         job = self._jobs_by_id.get(job_id)
         info = d.get("info_dict") or {}
+        final_job_id = f"{job_id} : {info.get("id")}"
 
-        info_parse = {
-                "ID": info.get("id"),
-                "Title": info.get("title"),
-                "Uploader": info.get("uploader"),
-                "ThumbnailURL" : select_album_art(info),
-                "Artist" : info.get("artist"),
-                "Title" : info.get("title"),
-                "Album" : info.get("album"),
-            }
-        # Choose video id: prefer job.video_id, fallback to hook info_dict
-        vid = job.video_id or info.get("id")
-        final_job_id = f"{job_id} : {info_parse["ID"]}"
-        print(final_job_id)
-        if not vid:
-            self.failed.emit(final_job_id, f"No video id; cannot resolve output path. pp={pp}")
+        if final_job_id in self._job_ids:
+            logging.error("Attempted duplicate hook")
             return
 
-        final_ext = (job.opt.value if job else "mp3")
+        # Choose video id: prefer job.video_id, fallback to hook info_dict
+        vid = (job.video_id if job else None) or info.get("id")
+        if not vid:
+            self.failed.emit(job_id, f"No video id; pp={pp}")
+            return
 
+        final_ext = job.opt.value if job else "mp3"
         out_path = (job.output_path if job else Path.cwd()) / f"{vid}.{final_ext}"
 
+        key = str(out_path)
+        if key in self._job_ids:
+            return
+        self._job_ids.add(key)  # mark immediately/ f"{vid}.{final_ext}"
+
         # Windows latency / move guard
-        for _ in range(50):  # ~2.5s
-            if out_path.exists():
-                self.finished.emit(final_job_id, final_ext, str(out_path), info_parse)
-                return
-            time.sleep(0.05)
+        try:
+            for _ in range(50):
+                if out_path.exists():
+                    info_parse = {
+                        "ID": vid,
+                        "Title": info.get("title"),
+                        "Uploader": info.get("uploader"),
+                        "ThumbnailURL": select_album_art(info),
+                        "Artist": info.get("artist") or info.get("uploader"),
+                        "Album": info.get("album"),
+                    }
+                    final_job_id = f"{job_id} : {vid}"
+                    self.finished.emit(final_job_id, final_ext, str(out_path), info_parse)
+                    return
+                time.sleep(0.05)
 
-        self.failed.emit(final_job_id, f"Expected output not found: {out_path} (pp={pp})")
+            self._job_ids.discard(key)  # allow retry if move latency exceeded
+            self.failed.emit(job_id, f"Expected output not found: {out_path} (pp={pp})")
 
-        print(info)
+        except Exception:
+            self._job_ids.discard(key)
+            raise
 
 
 
@@ -328,9 +337,9 @@ class DownloadManager(QObject):
         self.request_playlist_preview.connect(self.preview_service.extract_playlist_preview)
         self.download_service.progress.connect(self.request_status)
         self.download_service.finished.connect(self.write_metadata)
-        self.download_service.finished.connect(lambda *args: print("FINISHED SIGNAL:", args))
-        self.download_service.failed.connect(lambda job_id, err: print("FAILED", job_id, err))
-        self.preview_service.failed.connect(lambda: print("PREVIEW FAILED"))
+        self.download_service.finished.connect(lambda *args: logging.info("FINISHED SIGNAL:", args))
+        self.download_service.failed.connect(lambda job_id, err: logging.error("FAILED", job_id, err))
+        self.preview_service.failed.connect(lambda: logging.error("PREVIEW FAILED"))
         self.preview_service.update_playlist_preview.connect(self.relay_playlist_preview)
 
         # self.download_service.update_view.connect(self.update_view)
@@ -342,9 +351,10 @@ class DownloadManager(QObject):
     def classify_input(self, url : str) -> None:
         if 'playlist' in url:
             self.playlist_preview(url)
-            print("playlist mode selected")
+            logging.debug("playlist mode selected")
         else:
             self.preview_song(url)
+            logging.debug("single mode selected")
 
     def request_enqueue(self, url : str, opt: DL_OPTIONS = DL_OPTIONS.mp3, vid = None):
         if url.startswith("https://www.youtube.com") or url.startswith("https://music.youtube.com"):
@@ -354,21 +364,21 @@ class DownloadManager(QObject):
             self.request_job.emit(job)
 
         else:
-            print("Invalid link")
+            logging.error("Invalid link")
     
     def batch_request_enqueue(self,  opt : DL_OPTIONS = DL_OPTIONS.mp3):
-        print(self.last_playlist)
+        logging.info(self.last_playlist)
         for id, info_dict in self.last_playlist.items():
-            print(opt,id)
+            logging.info(opt,id)
             job = DownloadJob(info_dict["Link"], opt, id)
             self.request_job.emit(job)
 
     def preview_song(self, url : str):
         if url.startswith("https://www.youtube.com") or url.startswith("https://music.youtube.com"):
             self.request_preview.emit(url)
-            print("Song preview requested")
+            logging.debug("Song preview requested")
         else:
-            print("Invalid link")
+            logging.error("Invalid link")
     
     def playlist_preview(self, url : str):
         if url.startswith("https://www.youtube.com") or url.startswith("https://music.youtube.com"):
@@ -380,7 +390,7 @@ class DownloadManager(QObject):
     
     @Slot(dict)
     def relay_playlist_preview(self, infodict : dict):
-        print("playlist preview relayed")
+        logging.debug("playlist preview relayed")
         self.last_playlist.clear()
         self.last_playlist = infodict
         self.return_playlist_preview.emit(infodict)
@@ -396,17 +406,31 @@ class DownloadManager(QObject):
 
     @Slot(str, str, str, dict)
     def write_metadata(self, job_id, final_ext, filepath, info) -> None:
-        print("WRITE_METADATA:", job_id, info.get("ID"), filepath)
-        if job_id in self.processed_song_ids:
-            print("aborted")
-            return
-        print(final_ext)
-        print(filepath)
+        '''
+        Handles creation of song objects and metadata writing after worker thread finishes downloading song.
+        Writes artist, title and album automatically based on info passed from the worker thread. \n
+
+        Args:
+            :param self: 
+            :param job_id: Job ID associated with the download
+            :type: str
+            :param final_ext: extension of intended output file
+            :type: str
+            :param filepath: Location to the filepath for the song to be written to
+            :type: str 
+            :param info: Object containing metadata to be provided to the song
+            :type: dict \n
+    
+        '''
+        start = round(time.time()*1000)
+        logging.debug("WRITE_METADATA:", job_id, info.get("ID"), filepath, final_ext)
         if not self.automatic_metadata:
             self.updating_view.emit()
             return
         
         song = self.song_select(Path(filepath), final_ext)
+
+        end1 = round(time.time()*1000)
 
         song.update(
             artist=info.get("Artist") or info.get("Uploader"),
@@ -414,18 +438,30 @@ class DownloadManager(QObject):
             album=info.get("Album"),
         )
 
-        thumb_url = info.get("ThumbnailURL")
-        if thumb_url:
-            art_bytes = _bytes_from_url(thumb_url)
+        end2 = round(time.time()*1000)
+
+        art_bytes = info.get("Thumbnail")
+        if art_bytes:
             song.set_art_bytes(True, art_bytes)
             del art_bytes  # drop reference immediately
+        
+        end3 = round(time.time()*1000)
 
         path = song.rename_file()
 
         self.lib.upsert_song_from_path(path)
-        self.lib.post_edit_check()
-        self.processed_song_ids.add(job_id)
-        print("metadata written")
+        self.lib.post_album_add_check()
+        end = round(time.time()*1000)
+        logging.info(f'''
+        Metadata Writing Stats \n
+        ----------------------
+        Creating Song Object : {end1 - start} \n
+        Writing Text Metadata : {end2 - end1} \n
+        Writing Art Bytes to Song : {end3 - end2} \n
+        Upsert Song to Database : {end - end3} \n
+        Total time : {end - start} 
+        '''
+        )
 
     @Slot(str, dict)
     def request_status(self, job_id: str, d: dict) -> None:

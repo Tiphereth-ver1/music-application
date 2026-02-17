@@ -9,7 +9,7 @@ class HistorySongListModel(QAbstractListModel):
         self.player = player
         self.lib : LibraryService = player.lib
         self._songs = list(player.history)
-        self._icons: dict[str, QIcon] = {}
+        self._icons_by_cover: dict[str, QIcon] = {}
 
         player.history_appended.connect(self.prepend_song)
         player.history_removed.connect(self.pop_front_song)

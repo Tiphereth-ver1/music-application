@@ -5,14 +5,22 @@ from ...library_manager import PlaylistMeta
 
 TITLE_ROLE = Qt.UserRole + 1
 TIME_ROLE = Qt.UserRole + 2
+PLAY_ROLE = Qt.UserRole + 3
+QUEUE_ROLE = Qt.UserRole + 4
+DELETE_ROLE = Qt.UserRole + 5
 
-PLAY_RECT = QRect(14, 14, 30, 30)
+def colored_icon(path, color):
+    pixmap = QPixmap(path)
+    painter = QPainter(pixmap)
+    painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
+    painter.fillRect(pixmap.rect(), QColor(color))
+    painter.end()
+    return QIcon(pixmap)
 
-PLAY_RECT2 = QRect(44, 14, 30, 30)
 
 class SongItemDelegate(QStyledItemDelegate):
     song_pressed = Signal(int, str)
-    to_modify_song = Signal(str, int)
+    to_delete_song = Signal(int)
     def paint(self, painter, option, index):
         painter.save()
 
@@ -28,9 +36,10 @@ class SongItemDelegate(QStyledItemDelegate):
 
         icon1, icon2, icon3 = self._icon_rects(option)
 
-        painter.fillRect(icon1, QColor(150, 150, 255))
-        painter.fillRect(icon2, QColor(255, 150, 150))
-        painter.fillRect(icon3, QColor(150, 255, 150))
+        for icon_rect, role in zip((icon1, icon2, icon3), (PLAY_ROLE, QUEUE_ROLE, DELETE_ROLE)):
+            icon = index.data(role)
+            if icon and isinstance(icon, QIcon):
+                icon.paint(painter, icon_rect, Qt.AlignCenter)
 
         # Text
         painter.drawText(
@@ -80,7 +89,7 @@ class SongItemDelegate(QStyledItemDelegate):
                 return True
 
             if icon3.contains(pos):
-                self.to_modify_song.emit("single", index.row())
+                self.to_delete_song.emit(index.row())
                 return True
 
         return False
@@ -102,6 +111,12 @@ class PlaylistSongListModel(QAbstractListModel):
         minutes = length // 60
         seconds = length % 60
         return f"{minutes}:{seconds:02d}"
+    
+    def remove_song(self, row):
+        self.beginRemoveRows(QModelIndex(), row, row)
+        self._song_ids.pop(row)
+        self.endRemoveRows()
+ 
 
 
     def data(self, index, role=Qt.DisplayRole):
@@ -111,8 +126,12 @@ class PlaylistSongListModel(QAbstractListModel):
         song_id = self._song_ids[index.row()]
         meta = self.lib.get_song_meta(song_id)
 
-        if role == Qt.DisplayRole:
-            return f"{meta.title} -> {self._to_time(meta.duration)}"
+        if role == PLAY_ROLE:
+            return colored_icon(":/assets/icons/Play.svg", "white")
+        if role == QUEUE_ROLE:
+            return colored_icon(":/assets/icons/QueueLast.svg", "white")
+        if role == DELETE_ROLE:
+            return colored_icon(":/assets/icons/Close.svg", "white")
         if role == TITLE_ROLE:
             return meta.title
         if role == TIME_ROLE:

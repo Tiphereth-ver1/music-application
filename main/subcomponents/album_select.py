@@ -88,7 +88,6 @@ class AlbumSelect(QWidget):
             pixmap.fill(Qt.gray)
 
         label.setPixmap(pixmap)
-
         
     def update_ui(self):
         song_ids = self.lib.get_album_song_ids(self.album_meta.id)
@@ -133,5 +132,5 @@ class AlbumSelect(QWidget):
                 self.lib.upsert_song_from_path(abs_path)
                 if dialog.art_bytes:
                     song.set_art_bytes(True, dialog.art_bytes)
-        
+        self.lib.invalidate_album_cache(self.album_meta.id)
         self.lib.post_album_edit_check()

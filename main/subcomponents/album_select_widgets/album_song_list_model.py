@@ -5,10 +5,19 @@ from ...library_manager import AlbumMeta
 
 TITLE_ROLE = Qt.UserRole + 1
 TIME_ROLE = Qt.UserRole + 2
+PLAY_ROLE = Qt.UserRole + 3
+QUEUE_ROLE = Qt.UserRole + 4
+EDIT_ROLE = Qt.UserRole + 5
 
-PLAY_RECT = QRect(14, 14, 30, 30)
 
-PLAY_RECT2 = QRect(44, 14, 30, 30)
+def colored_icon(path, color):
+    pixmap = QPixmap(path)
+    painter = QPainter(pixmap)
+    painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
+    painter.fillRect(pixmap.rect(), QColor(color))
+    painter.end()
+    return QIcon(pixmap)
+
 
 class SongItemDelegate(QStyledItemDelegate):
     song_pressed = Signal(int, str)
@@ -20,17 +29,13 @@ class SongItemDelegate(QStyledItemDelegate):
         if option.state & QStyle.State_Selected:
             painter.fillRect(option.rect, option.palette.highlight())
 
-        # Album art
-        # icon = index.data(Qt.DecorationRole)
-        # if icon:
-        #     icon.paint(painter, option.rect.adjusted(4, 4, -4, -4), Qt.AlignLeft)
-
 
         icon1, icon2, icon3 = self._icon_rects(option)
 
-        painter.fillRect(icon1, QColor(150, 150, 255))
-        painter.fillRect(icon2, QColor(255, 150, 150))
-        painter.fillRect(icon3, QColor(150, 255, 150))
+        for icon_rect, role in zip((icon1, icon2, icon3), (PLAY_ROLE, QUEUE_ROLE, EDIT_ROLE)):
+            icon = index.data(role)
+            if icon and isinstance(icon, QIcon):
+                icon.paint(painter, icon_rect, Qt.AlignCenter)
 
         # Text
         painter.drawText(
@@ -117,4 +122,11 @@ class AlbumSongListModel(QAbstractListModel):
             return meta.title
         if role == TIME_ROLE:
             return self._to_time(meta.duration)
+        if role == PLAY_ROLE:
+            return colored_icon(":/assets/icons/Play.svg", "black")
+        if role == QUEUE_ROLE:
+            return colored_icon(":/assets/icons/QueueLast.svg", "black")
+        if role == EDIT_ROLE:
+            return colored_icon(":/assets/icons/Edit.svg", "black")
+
         return None  # fallback if no pixmap

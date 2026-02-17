@@ -1,5 +1,5 @@
 from mutagen.mp3 import MP3
-from mutagen.id3 import ID3, TIT2, TPE1, TALB, TRCK, TPE2, TDRC, TCON, COMM, APIC
+from mutagen.id3 import ID3, TIT2, TPE1, TALB, TRCK, TPE2, TDRC, TCON, COMM, APIC, ID3TimeStamp
 from PySide6.QtCore import QUrl, Signal, QObject
 from pathlib import Path
 import enum
@@ -15,6 +15,16 @@ TAG_MAP = {
     "genre": TCON,
     "year": TDRC,
 }
+
+def normalize_tag_value(value):
+    if value is None:
+        return None
+    if isinstance(value, ID3TimeStamp):
+        return int(str(value)[:4])
+    if isinstance(value, (list, tuple)):
+        return normalize_tag_value(value[0])
+    return str(value)
+
 
 class MP3Song(Song, QObject):
 
@@ -95,30 +105,13 @@ class MP3Song(Song, QObject):
         return None
     
     def get_info(self, field):
-        try:
-            frame_cls = TAG_MAP[field]
-        except KeyError:
-            raise ValueError(f"Unknown tag field: {field}")
-
+        frame_cls = TAG_MAP[field]
         frame = self.audio.get(frame_cls.__name__)
         if not frame:
             return None
 
-        return frame.text[0]
-    
-    def get_song_length(self) -> float:
-        return self.length
-
-
-    def get_all_info(self):
-        print("Song Information \n________________________")
-        for name, tag in TAG_MAP.items():
-            frame = self.audio.get(tag.__name__)
-            if frame:
-                print(f"{name}: {frame}")
-            else:
-                print(f"{name}: <not set>")
-        print("________________________")
+        raw = frame.text if hasattr(frame, "text") else frame
+        return normalize_tag_value(raw)
 
     def save(self):
         self.audio.save(v2_version=3)

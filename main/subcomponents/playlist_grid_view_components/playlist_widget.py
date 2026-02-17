@@ -36,7 +36,7 @@ class PlaylistWidget(QWidget):
         verticalLayout.addWidget(self.CoverLabel)
 
         self.title_label = QLabel(self)
-        self.title_label.setText(playlist.name)
+        self.title_label.setText(playlist.title)
         verticalLayout.addWidget(self.title_label)
     
     def reload_preview(self, label: QLabel, art_source: bytes | Path | str | None):
@@ -60,11 +60,8 @@ class PlaylistWidget(QWidget):
             pixmap.fill(Qt.gray)
 
         label.setPixmap(pixmap)
-
     
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
             self.clicked.emit()
         super().mousePressEvent(event)
-
-

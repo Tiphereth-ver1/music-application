@@ -20,7 +20,7 @@ class Player(QObject):
     history_removed = Signal(int)
     queue_appended = Signal(int)
     queue_popped = Signal(int)
-    queue_appended_front = Signal(int)
+    queue_prepended = Signal(int)
     '''
     To use a signal, define it outside of the initialisation. When in code, use self.function.emit()
     '''
@@ -29,7 +29,7 @@ class Player(QObject):
         super().__init__()
         self.lib = library
         self.playing = None
-        self.queue : deque[int] = deque()
+        self.queue : list[int] = []
         self.loop_mode : LoopMode = LoopMode.NONE
         self.history : list[int] = []
         self.shuffle = False
@@ -71,8 +71,6 @@ class Player(QObject):
         :return: Description
         :rtype: bool
         '''
-        if not self.playing:
-            return False
         if self.loop_mode == LoopMode.SINGLE:
             return True
         if self.queue:
@@ -83,7 +81,7 @@ class Player(QObject):
     
 
     def _advance_queue(self) -> int | None:
-        song_id = self.queue.popleft()
+        song_id = self.queue.pop(0)
         if not song_id:
             return None
         
@@ -98,7 +96,6 @@ class Player(QObject):
 
         self._set_playing(self._advance_queue())
 
-
     def _queue_songs(self, songs : list[int]) -> None:
         for song_id in songs:
             self._queue_song_back(song_id)
@@ -107,20 +104,18 @@ class Player(QObject):
     def _queue_songs_front(self, songs : list[int]) -> None:
         for song_id in reversed(songs):
             self._queue_song_front(song_id)
-        self.queue_modified.emit()
+        # self.queue_modified.emit()
 
     def _queue_song_back(self, song_id : int) -> None:
         self.queue.append(song_id)
         self.queue_appended.emit(song_id)
 
     def _queue_song_front(self, song_id : int) -> None:
-        self.queue.appendleft(song_id)
-        self.queue_appended_front.emit(song_id)
+        self.queue.insert(0,song_id)
+        self.queue_prepended.emit(song_id)
     
     def _queue_song_index(self, index : int, song_id : int) -> None:
-        tmp = list(self.queue)
-        tmp.insert(index, song_id)
-        self.queue = deque(tmp)
+        self.queue.insert(index, song_id)
         self.queue_modified.emit()
 
     def get_playing(self) -> int:

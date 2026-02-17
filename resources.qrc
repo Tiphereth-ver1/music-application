@@ -1,0 +1,23 @@
+<RCC>
+    <qresource prefix="/">
+        <file>assets/icons/ringo_music.jpg</file>
+        <file>assets/icons/ArrowLeft.svg</file>
+        <file>assets/icons/ArrowRight.svg</file>
+        <file>assets/icons/ChevronLeft.svg</file>
+        <file>assets/icons/ChevronRight.svg</file>
+        <file>assets/icons/Close.svg</file>
+        <file>assets/icons/Downloader.svg</file>
+        <file>assets/icons/Pause.svg</file>
+        <file>assets/icons/Play.svg</file>
+        <file>assets/icons/Player.svg</file>
+        <file>assets/icons/Playlists.svg</file>
+        <file>assets/icons/PlaylistRemove.svg</file>
+        <file>assets/icons/Plus.svg</file>
+        <file>assets/icons/QueueLast.svg</file>
+        <file>assets/icons/Visualiser.svg</file>
+        <file>assets/icons/Albums.svg</file>
+        <file>assets/icons/Search.svg</file>
+        <file>assets/icons/Edit.svg</file>
+        <file>assets/icons/Repeat.svg</file>
+    </qresource>
+</RCC>
