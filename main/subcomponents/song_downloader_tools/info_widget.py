@@ -17,15 +17,25 @@ class InfoWidget(QWidget):
     def __init__(self, parent = None):
         super().__init__(parent)
         self.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed))
-        self.layout = QHBoxLayout(self)
+        self.layout = QVBoxLayout(self)
         self.info_boxes : dict = {}
+
+        self.info_text = QLabel(self)
+        self.info_text.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        self.layout.addWidget(self.info_text)
+
+        self.info_box = QWidget(self)
+        self.layout.addWidget(self.info_box)
+        self.info_layout = QHBoxLayout(self.info_box)
+
         self.info_box_font = QFont()
         self.info_box_font.setPointSize(12)
+        self.info_boxes["Information"] = self.info_text
         for info in INFO_BOX:
             self.create_info_box(info)
         self.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed))
 
-    def create_info_box(self, selection : INFO_BOX):
+    def create_info_box(self, selection : INFO_BOX) -> QFrame:
         info_box = QFrame(self)
         info_box.setObjectName("Selector")
         info_box.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum))
@@ -44,8 +54,7 @@ class InfoWidget(QWidget):
         lower_text.setFont(self.info_box_font)
         info_box_layout.addWidget(lower_text)
         self.info_boxes[selection.value] = lower_text
-        self.layout.addWidget(info_box)
-        
+        self.info_layout.addWidget(info_box)
 
 
 

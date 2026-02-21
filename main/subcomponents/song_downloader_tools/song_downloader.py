@@ -12,6 +12,8 @@ from ...song_subclasses import MP3Song, M4ASong, FLACSong
 from ...library_manager import LibraryService
 import logging
 
+max_info_length = 90
+
 class DL_OPTIONS(Enum):
     mp3 = "mp3"
     m4a = "m4a"
@@ -26,6 +28,7 @@ def _bytes_from_url(url: str) -> bytes:
 
 def select_album_art(info: dict) -> str | None:
     thumbs = info.get("thumbnails") or []
+    print(thumbs)
 
     # 1) square thumbnails (album art)
     square = [
@@ -36,12 +39,17 @@ def select_album_art(info: dict) -> str | None:
 
     if square:
         best = max(square, key=lambda t: t["width"])
+        logging.debug("Square chosen")
         return best["url"]
 
     # 2) fallback: best available thumbnail
     if thumbs:
         best = max(thumbs, key=lambda t: t.get("preference", -100))
+        logging.debug("Thumb chosen")
+
         return best["url"]
+    
+    logging.debug("No thumbnail could be selected")
     return None
 
 
@@ -234,8 +242,10 @@ class DownloadService(QObject):
             spd_str = f"{spd/1024/1024:,.2f} MiB/s" if spd else " ? "
 
             eta = d.get("eta")
-            eta_str = str(eta) if eta is not None else "?"
-
+            eta_str = f'{str(eta)} seconds' if eta is not None else "?"
+        
+            info_dict = d.get("info_dict")
+            download_info = f"Currently downloading {info_dict['title']} - {info_dict["uploader"]}"[:max_info_length]
 
             self.progress.emit(job_id,{
                 "Downloaded": downloaded_str,
@@ -243,13 +253,36 @@ class DownloadService(QObject):
                 "Total": total_str,
                 "Speed": spd_str,
                 "ETA": eta_str,
+                "Information" : download_info
             })
 
         elif status == "error":
             self.failed.emit(job_id, "download error")
+            logging.exception("Error encountered during download")
+        
+            info_dict = d.get("info_dict")
+            download_info = f"Failed download for {info_dict['title']} - {info_dict["uploader"]}"[:max_info_length]
+
+            self.progress.emit(job_id,{
+                "Information" : download_info
+            })
+
+            return
+
             
     def _post_hook_for_job(self, job_id: str, d: dict):
         if d.get("status") != "finished":
+            logging.debug("Attempted post-hook")
+        
+            info_dict = d.get("info_dict")
+            download_info = f"Processing {info_dict['title']} - {info_dict["uploader"]}"[:max_info_length]
+
+            self.progress.emit(job_id,{
+                "Percentage": '100%',
+                "ETA": 0,
+                "Information" : download_info
+            })
+
             return
 
         pp = str(d.get("postprocessor") or "")
@@ -287,12 +320,16 @@ class DownloadService(QObject):
                         "ID": vid,
                         "Title": info.get("title"),
                         "Uploader": info.get("uploader"),
-                        "ThumbnailURL": select_album_art(info),
+                        "Thumbnail": _bytes_from_url(select_album_art(info)),
                         "Artist": info.get("artist") or info.get("uploader"),
                         "Album": info.get("album"),
                     }
                     final_job_id = f"{job_id} : {vid}"
                     self.finished.emit(final_job_id, final_ext, str(out_path), info_parse)
+                    download_info = f"Finished {info['title']} - {info["uploader"]}"[:max_info_length]
+                    self.progress.emit(job_id,{
+                        "Information" : download_info
+                    })
                     return
                 time.sleep(0.05)
 
@@ -429,7 +466,6 @@ class DownloadManager(QObject):
             return
         
         song = self.song_select(Path(filepath), final_ext)
-
         end1 = round(time.time()*1000)
 
         song.update(

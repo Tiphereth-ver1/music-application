@@ -25,7 +25,7 @@ class AppContext:
 class MainWindow(QMainWindow):
     def __init__(self, ctx : AppContext):
         super().__init__()
-        self.resize(1000, 700)  # Ensure window is large enough for the layout
+        self.resize(1200, 700)  # Ensure window is large enough for the layout
 
         # --- Audio engine ---
         self.lib = ctx.lib
@@ -166,7 +166,7 @@ if __name__ == "__main__":
 
     app = QApplication(sys.argv)
 
-    theme = "suika_kaiju"
+    theme = "mint_green"
     path = get_str_path(theme)
     print(path)
 
@@ -188,12 +188,13 @@ if __name__ == "__main__":
     app.theme_watcher.fileChanged.connect(reload_theme)
 
 
-
+    pre_window = round(time.time()*1000)
     window = MainWindow(ctx)
     window.setWindowTitle("Ringo Music")
     window.show()
     startup = round(time.time()*1000)
-    print(f"Application loading time : {startup - pre_startup}")
+    logging.debug(f"Window loading time : {startup - pre_window}")
+    logging.debug(f"Application startup time : {startup - pre_startup}")
     sys.exit(app.exec())
 
 

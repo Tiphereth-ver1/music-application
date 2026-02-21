@@ -120,7 +120,10 @@ class SongSerachListModel(QAbstractListModel):
         meta = self.lib.get_song_meta(song_id)
 
         if role == TITLE_ROLE:
-            return f"{meta.title} - {meta.artist}"
+            thing = f"{meta.title} - {meta.artist}"
+            if len(thing) > 60:
+                thing = thing[:60] + "..."
+            return thing
         if role == TIME_ROLE:
             return self._to_time(meta.duration)
         if role == PLAY_ROLE:

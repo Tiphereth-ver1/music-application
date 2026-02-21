@@ -1,5 +1,5 @@
 from PySide6.QtCore import QAbstractListModel, Qt, QModelIndex, Qt, QRect, QSize, QEvent, Signal
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QIcon, QPixmap, QPainter
 from PySide6.QtWidgets import QStyledItemDelegate, QStyle
 
 DOWNLOAD_ROLE = Qt.UserRole + 1
@@ -27,8 +27,8 @@ class DownloadItemDelegate(QStyledItemDelegate):
 
             icon1 = self._icon_rect(option)
             icon1 = index.data(DOWNLOAD_ROLE)
-            if icon and isinstance(icon, QIcon):
-                icon.paint(painter, icon_rect, Qt.AlignCenter)
+            if icon1 and isinstance(icon1, QIcon):
+                icon1.paint(painter, icon_rect, Qt.AlignCenter)
 
 
             painter.drawText(

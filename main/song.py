@@ -30,6 +30,18 @@ def sanitize_filename(
     replacement: str = "_",
     max_length: int = 255
 ) -> str:
+    """
+    Replace illegal characters in Windows filenames and reserved device names.
+
+    :param name: The string to sanitize.
+    :type name: str
+    :param replacement: String to replace illegal characters with.
+    :type replacement: str
+    :param max_length: Maximum allowed length of the output string.
+    :type max_length: int
+    :return: The sanitized filename.
+    :rtype: str
+    """
     # Normalize Unicode (é vs e + ´ etc.)
     name = unicodedata.normalize("NFKC", name)
 
@@ -51,7 +63,54 @@ def sanitize_filename(
 
 
 class Song(QObject):
+    """
+    Abstract base class representing a standardized interface for audio files.
+
+    This class defines the common behaviour required for working with different
+    audio metadata/format backends. Subclasses are responsible for loading
+    audio data, providing metadata access, and managing album art and file paths.
+
+    Each subclass must implement the following methods:
+
+    - initialise_audio(path): Load the audio file located at ``path`` and assign
+      an appropriate backend object to ``self.audio``. This method should also
+      populate ``self.length`` if available.
+    - set(field, value): Update a metadata field (e.g. title, artist, album).
+      Implementations may raise ValueError for unsupported fields.
+    - set_art(filepath): Set the embedded artwork using an image file.
+    - set_art_bytes(emit_update, art_bytes): Set the embedded artwork from raw
+      bytes and optionally emit an update signal.
+    - set_path(): Compute and apply a new filesystem path for the song based on
+      subclass rules. Must return the new path.
+    - save(): Persist metadata and artwork changes to disk.
+    - get_art(): Return embedded artwork as bytes or ``None``.
+    - get_info(field): Return the requested metadata value.
+
+    Attributes:
+        path (Path): Absolute path to the audio file.
+        audio: Backend-specific audio object that provides loading and saving.
+        length (float | None): Duration of the song in seconds, set by the
+            subclass during audio initialisation.
+
+    Notes:
+        - ``update()`` applies field updates and emits ``changed``.
+        - ``silent_update()`` applies field updates without emitting ``changed``.
+        - ``path_as_url()`` provides a ``QUrl`` suitable for Qt file-handling.
+        - ``rename_file()`` delegates filename generation to ``set_path()`` and
+          reloads audio metadata.
+
+    Example:
+        class MP3Song(Song):
+            def initialise_audio(self, path):
+                self.audio = MutagenMP3(path)
+                self.length = self.audio.info.length
+                return path
+
+            def set(self, field, value):
+                self.audio.tags[field] = value
+    """
     changed = Signal()
+
 
     def __init__(self, song_filepath:str):
         super().__init__()

@@ -17,6 +17,7 @@ class AlbumSelect(QWidget):
         super().__init__(parent)
         self.internal_layout = QVBoxLayout(self)
         self.lib = library
+        self.art_cache = library.art_cache
         self.album_meta = album_meta
         self.song_ids = self.lib.get_album_song_ids(self.album_meta.id)
 
@@ -67,24 +68,19 @@ class AlbumSelect(QWidget):
         self.back_button.setFixedHeight(40)
         self.internal_layout.addWidget(self.back_button)
 
-    def _reload_preview(self, label: QLabel, art_source: bytes | Path | str | None):
+    def _reload_preview(self, label: QLabel, art_source: Path | str | None):
         pixmap = QPixmap()
 
         if isinstance(art_source, (Path, str)):
             # load from file path
             if pixmap.load(str(art_source)):
-                pixmap = pixmap.scaled(label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                pass
             else:
-                pixmap = QPixmap(150, 150)
+                pixmap = QPixmap(128, 128)
                 pixmap.fill(Qt.gray)
 
-        elif isinstance(art_source, (bytes, bytearray)) and art_source:
-            # load from bytes
-            pixmap.loadFromData(bytes(art_source))
-            pixmap = pixmap.scaled(label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
-
         else:
-            pixmap = QPixmap(150, 150)
+            pixmap = QPixmap(128, 128)
             pixmap.fill(Qt.gray)
 
         label.setPixmap(pixmap)
@@ -94,7 +90,7 @@ class AlbumSelect(QWidget):
         title, artist = self.album_meta.title, self.album_meta.album_artist
         self.title_Label.setText(f"{title} \n{artist}")
         length = len(song_ids)
-        self._reload_preview(self.cover_Label, self.album_meta.cover_path)
+        self._reload_preview(self.cover_Label, self.art_cache.get_image_cache(self.album_meta.art_hex, 256))
 
     def return_song(self,idx, mode):
         song_id = self.song_ids[idx]

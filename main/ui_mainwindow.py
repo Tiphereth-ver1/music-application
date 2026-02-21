@@ -25,7 +25,7 @@ class Ui_MainWindow(QWidget):
         self.leftbar.setSizePolicy(QSizePolicy.Policy.Fixed,QSizePolicy.Policy.Expanding)
         self.swappable = Swappable(library, self)
         self.swappable.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Expanding)
-        self.swappable.setMinimumSize(QSize(450, 600))
+        self.swappable.setMinimumSize(QSize(600, 600))
         self.swappable.returning_song.connect(self.return_songs)
         self.rightbar = QueueHistoryDisplay(player, self)
         self.rightbar.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Expanding)

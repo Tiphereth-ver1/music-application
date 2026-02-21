@@ -1,4 +1,3 @@
-from .playlist import Playlist
 from collections import deque
 from random import shuffle
 import logging

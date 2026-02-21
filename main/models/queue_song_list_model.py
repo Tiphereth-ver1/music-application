@@ -2,12 +2,14 @@ from PySide6.QtCore import QAbstractListModel, Qt, QModelIndex
 from PySide6.QtGui import QPixmap, QIcon
 from ..player import Player
 from ..library_manager import LibraryService
+from ..art_cache import ArtCache
 
 class QueueSongListModel(QAbstractListModel):
     def __init__(self, player: Player, songs=None):
         super().__init__()
         self.player = player
         self.lib : LibraryService = player.lib
+        self.art_cache = self.lib.art_cache
         self._songs = player.queue
         self._icons_by_cover: dict[str, QIcon] = {}
 
@@ -40,22 +42,21 @@ class QueueSongListModel(QAbstractListModel):
         if role == Qt.DisplayRole:
             return f"{meta.title} - {meta.artist}"
         if role == Qt.DecorationRole:
-            if not meta.cover_path:
+            if not meta.art_hex:
                 return self._make_default_icon()
 
             # Cache key per album cover (shared by many songs)
-            key = str(meta.cover_path)
+            key = str(meta.art_hex)
             icon = self._icons_by_cover.get(key)
             if icon is not None:
                 return icon
 
             cover_abs = str(meta.cover_path)
 
-            pm = QPixmap(str(cover_abs))
+            pm = QPixmap(self.art_cache.get_image_cache(meta.art_hex, 64))
             if pm.isNull():
                 return self._make_default_icon()
 
-            pm = pm.scaled(40, 40, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             icon = QIcon(pm)
             self._icons_by_cover[key] = icon
             return icon

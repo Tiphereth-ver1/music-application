@@ -40,6 +40,6 @@ class PreviousPauseNext(QWidget):
             self.layout.addWidget(btn)
             self.buttons[name] = btn
 
-        print(self.buttons)
+        # print(self.buttons)
         self.layout.addStretch()
 

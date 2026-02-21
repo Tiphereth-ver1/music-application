@@ -5,7 +5,16 @@ from .song_subclasses import MP3Song, M4ASong, FLACSong
 from .song import Song
 from PySide6.QtCore import QObject, Signal
 from enum import Enum
+from .art_cache import ArtCache
 import hashlib, time, logging
+
+def get_image_cache(self, hex: str, size : int, ext : str = ".jpg"):
+    path = self.cache_dir / hex[:2] / hex / f"{size}{ext}"
+    if path.exists():
+        return path
+    return None
+
+
 
 def cache_image_bytes(data: bytes | None, cache_dir: Path, ext=".jpg") -> Path | None:
     if not data:
@@ -52,6 +61,7 @@ class SongMeta:
     track_total: int | None
     year: int | None
     file_path: Path          # relative path from DB
+    art_hex: str
     cover_path: Optional[Path]  # relative, from albums table
 
 @dataclass(frozen=True, slots=True)
@@ -61,12 +71,14 @@ class AlbumMeta:
     album_artist: str
     year: int | None
     cover_path: Optional[Path]   # relative
+    art_hex: str
 
 @dataclass(frozen=True, slots=True)
 class PlaylistMeta:
     id: int
     title: str
     cover_path: Optional[Path]   # relative
+    art_hex: str
 
 
 class LibraryService(QObject):
@@ -83,6 +95,8 @@ class LibraryService(QObject):
         self._song_cache: dict[int, Song] = {}
         self._meta_cache: dict[int, SongMeta] = {}
         self._album_cache: dict = {}
+        self.art_dir = self._base_dir() / "cache" / "album_art"
+        self.art_cache = ArtCache(self.art_dir)
         
         pre_startup = round(time.time()*1000)
         # self._clear_database()
@@ -94,7 +108,6 @@ class LibraryService(QObject):
     @staticmethod
     def _fold(s: str | None) -> str | None:
         return s.casefold() if s else None
-
 
     def _base_dir(self) -> Path:
         return Path(__file__).resolve().parent.parent
@@ -132,6 +145,7 @@ class LibraryService(QObject):
                 album_artist TEXT NOT NULL,
                 year INTEGER,
                 cover_path TEXT,
+                art_hex TEXT,
                 UNIQUE(title, album_artist)
             );""")
 
@@ -144,6 +158,7 @@ class LibraryService(QObject):
             album_artist TEXT,
             album_id INTEGER,
             file_path TEXT UNIQUE NOT NULL,
+            art_hex TEXT,
             duration REAL,
             year INTEGER,
             track INTEGER,
@@ -166,7 +181,8 @@ class LibraryService(QObject):
                 title TEXT NOT NULL,
                 created_at INTEGER,
                 updated_at INTEGER,
-                cover_path TEXT, 
+                cover_path TEXT,
+                art_hex TEXT,
                 UNIQUE(title));
                 """)
 
@@ -210,7 +226,7 @@ class LibraryService(QObject):
             SELECT
                 s.id, s.title, s.artist, s.album, s.album_artist,
                 s.duration, s.year, s.track, s.track_total, 
-                s.file_path, a.cover_path
+                s.file_path, s.art_hex, a.cover_path
             FROM songs s
             LEFT JOIN albums a ON a.id = s.album_id
             WHERE s.id = ?
@@ -220,7 +236,7 @@ class LibraryService(QObject):
             raise KeyError(f"No song with id={song_id}")
 
         (sid, title, artist, album, album_artist,
-            duration, year, track, track_total, file_path, cover_path) = row
+            duration, year, track, track_total, file_path, art_hex, cover_path) = row
 
         song_meta = SongMeta(
             id=sid,
@@ -233,21 +249,24 @@ class LibraryService(QObject):
             track=track,
             track_total=track_total,
             file_path=Path(file_path),
+            art_hex = art_hex,
             cover_path=Path(cover_path) if cover_path else None
         )
 
         self._meta_cache[song_id] = song_meta
         return song_meta
 
-    def _upsert_album(self, title: str, album_artist: str, year: int | None, cover_path: str | None) -> int:
+    def _upsert_album(self, title: str, album_artist: str, year: int | None, cover_path: str | None, art_hex: str | None) -> int:
         self.cursor.execute(
             """
-            INSERT INTO albums (title, album_artist, year, cover_path)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO albums (title, album_artist, year, cover_path, art_hex)
+            VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(title, album_artist) DO UPDATE SET
                 year = COALESCE(excluded.year, albums.year),
-                cover_path = COALESCE(excluded.cover_path, albums.cover_path)
-        """, (title, album_artist, year, cover_path))
+                cover_path = COALESCE(excluded.cover_path, albums.cover_path),
+                art_hex = COALESCE(excluded.art_hex, albums.art_hex)
+
+        """, (title, album_artist, year, str(cover_path), art_hex))
 
         self.cursor.execute("""
         SELECT id FROM albums
@@ -275,7 +294,6 @@ class LibraryService(QObject):
             self.cursor.execute(f"DELETE FROM songs WHERE id IN ({q})", chunk)
 
         return len(missing_ids)
-
 
     def scan_library(self) -> dict:
         seen : set = set()
@@ -330,26 +348,30 @@ class LibraryService(QObject):
                 return "unchanged"
             song, ext = init
 
-            art_dir = self._base_dir() / "cache" / "album_art"
-            cover_abs = cache_image_bytes(song.get_art(), art_dir, ext=".jpg")
-            cover_rel = str(cover_abs.relative_to(self._base_dir())) if cover_abs else None
-
+            art_bytes = song.get_art()
+            art_hex = self.art_cache.get_hex_cache(art_bytes)
+            self.art_cache.cache_image_bytes(art_bytes, ext=".jpg")
             #check to have either album artist or artist as an album
             album, album_artist = self._album_info_check(song)
 
             title = song.get_info("title")
             artist = song.get_info("artist")
 
+            if art_hex:
+                self.art_cache.cache_image_bytes(art_bytes, ext=".jpg")
+                art_path_256 = self.art_cache.get_image_cache(art_hex, 256)
+            else:
+                art_path_256 = None
 
-            album_id = self._upsert_album(album, album_artist, song.get_info("year"), cover_rel)
+            album_id = self._upsert_album(album, album_artist, song.get_info("year"), str(art_path_256), art_hex)
             self.cursor.execute("""
                 INSERT INTO songs (
                     title, artist, album, album_artist, album_id,
-                    file_path, duration, year, track, track_total,
+                    file_path, art_hex, duration, year, track, track_total,
                     file_extension, mtime, size,
                     title_fold, artist_fold, album_fold
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 title,
                 artist,
@@ -357,6 +379,7 @@ class LibraryService(QObject):
                 album_artist,
                 album_id,
                 rel_str,
+                art_hex,
                 song.get_song_length(),
                 song.get_info("year"),
                 song.get_info("track"),
@@ -383,17 +406,24 @@ class LibraryService(QObject):
             return "unchanged", None  # or raise
         song, ext = init
 
-        art_dir = self._base_dir() / "cache" / "album_art"
-        cover_abs = cache_image_bytes(song.get_art(), art_dir, ext=".jpg")
-        cover_rel = str(cover_abs.relative_to(self._base_dir())) if cover_abs else None
-
+        art_bytes = song.get_art()
+        art_hex = self.art_cache.get_hex_cache(art_bytes)
+        self.art_cache.cache_image_bytes(art_bytes, ext=".jpg")
         #check to have either album artist or artist as an album
         album, album_artist = self._album_info_check(song)
-        album_id = self._upsert_album(album, album_artist, song.get_info("year"), cover_rel)
 
         title = song.get_info("title")
         artist = song.get_info("artist")
 
+        if art_hex:
+            self.art_cache.cache_image_bytes(art_bytes, ext=".jpg")
+            art_path_256 = self.art_cache.get_image_cache(art_hex, 256)
+        else:
+            art_path_256 = None
+
+        #check to have either album artist or artist as an album
+        album, album_artist = self._album_info_check(song)
+        album_id = self._upsert_album(album, album_artist, song.get_info("year"), art_path_256, art_hex)
 
         self.cursor.execute("""
             UPDATE songs
@@ -404,6 +434,7 @@ class LibraryService(QObject):
                 album_artist=?,
                 album_id=?,
                 file_path=?,
+                art_hex=?,
                 duration=?,
                 year=?,
                 track=?,
@@ -422,6 +453,7 @@ class LibraryService(QObject):
             album_artist,
             album_id,
             rel_str,
+            art_hex,
             song.get_song_length(),
             song.get_info("year"),
             song.get_info("track"),
@@ -488,7 +520,6 @@ class LibraryService(QObject):
             album_artist = "Unknown Artist"
         
         return album, album_artist
-
     
     def enumerate_audio_files(self) -> list[Path]:
         base_dir = Path(__file__).resolve().parent.parent
@@ -522,7 +553,7 @@ class LibraryService(QObject):
             return cached
         else: 
             self.cursor.execute("""
-                SELECT id, title, album_artist, year, cover_path
+                SELECT id, title, album_artist, year, cover_path, art_hex
                 FROM albums
                 WHERE id = ?
             """, (album_id,))
@@ -532,14 +563,15 @@ class LibraryService(QObject):
             if row is None:
                 return None
 
-            aid, title, album_artist, year, cover = row
+            aid, title, album_artist, year, cover, hex = row
 
             meta = AlbumMeta(
                 id=aid,
                 title=title,
                 album_artist=album_artist,
                 year=year,
-                cover_path=Path(cover) if cover else None
+                cover_path=Path(cover) if cover else None,
+                art_hex = hex
             )
 
             self._album_cache[album_id] = meta
@@ -566,12 +598,12 @@ class LibraryService(QObject):
         """, (album_id,))
         return [r[0] for r in self.cursor.fetchall()]
 
-    def abs_album_cover_path(self, album_id: int) -> Path | None:
-        self.cursor.execute("SELECT cover_path FROM albums WHERE id = ?", (album_id,))
+    def abs_album_cover_path(self, album_id: int, size : int) -> Path | None:
+        self.cursor.execute("SELECT art_hex FROM albums WHERE id = ?", (album_id,))
         row = self.cursor.fetchone()
         if not row or not row[0]:
             return None
-        return self._to_abs(Path(row[0]))
+        return self.art_cache.get_image_cache(row, size)
     
     def get_songs_from_playlist(self, playlist_id : int) -> list[int]:
         self.cursor.execute("""
@@ -617,7 +649,6 @@ class LibraryService(QObject):
                 title=title,
                 cover_path=Path(cover) if cover else None
             )
-
 
     def get_playlists(self) -> list[PlaylistMeta]:
         self.cursor.execute("""

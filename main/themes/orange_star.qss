@@ -22,7 +22,7 @@ border-main:    #d97706
 
 /* ===== GLOBAL ===== */
 QWidget {
-    background-color: #f4f1ec;
+    background-color: #f3ddbb;
     color: #3a2f1d;
     font-family: "Segoe UI", Arial, sans-serif;
     font-size: 12pt;

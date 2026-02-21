@@ -20,10 +20,11 @@ class CoverSongLabel(QWidget):
         self.layout = QVBoxLayout(self)
         self.layout.setObjectName(u"layout")
         self.lib = library
+        self.art_cache = library.art_cache
 
         # --- Cover label ---
         self.coverLabel = QLabel()
-        self.coverLabel.setFixedSize(250, 250)
+        self.coverLabel.setFixedSize(QSize(256,256))
         self.coverLabel.setScaledContents(False)
         self.coverLabel.setAlignment(Qt.AlignCenter)
         self.layout.addWidget(self.coverLabel, alignment=Qt.AlignCenter)
@@ -43,7 +44,7 @@ class CoverSongLabel(QWidget):
         title = meta.title or "Unknown Title"
         artist = meta.artist or "Unknown Artist"
         self.song_label.setText(f"{title}\n{artist}")
-        self.reload_preview(self.coverLabel, meta.cover_path)
+        self.reload_preview(self.coverLabel, self.art_cache.get_image_cache(meta.art_hex,256))
 
     def reload_preview(self, label: QLabel, art_source: bytes | Path | str | None):
         pixmap = QPixmap()
@@ -51,7 +52,7 @@ class CoverSongLabel(QWidget):
         if isinstance(art_source, (Path, str)):
             # load from file path
             if pixmap.load(str(art_source)):
-                pixmap = pixmap.scaled(label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                pass
             else:
                 pixmap = QPixmap(250, 250)
                 pixmap.fill(Qt.gray)
@@ -59,8 +60,7 @@ class CoverSongLabel(QWidget):
         elif isinstance(art_source, (bytes, bytearray)) and art_source:
             # load from bytes
             pixmap.loadFromData(bytes(art_source))
-            pixmap = pixmap.scaled(label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
-
+            pass
         else:
             pixmap = QPixmap(250, 250)
             pixmap.fill(Qt.gray)

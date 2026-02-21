@@ -27,7 +27,13 @@ def normalize_tag_value(value):
 
 
 class MP3Song(Song, QObject):
+    """
+    Subclass of Song designed to interact with .mp3 files.
 
+    This class provides the implementations required to provide metadata access,
+    load audio data, and manage album art and file paths.
+
+    """
     def __init__(self, song_filepath:str):
         super().__init__(song_filepath)
 
@@ -39,6 +45,13 @@ class MP3Song(Song, QObject):
         self.length = self.audio.info.length
 
     def set(self, field: str, value:str | None):
+        """
+        Set an ID3 metadata field.
+
+        Unknown fields raise ValueError. If ``value`` is None, the tag frame is
+        removed entirely.
+        """
+
         try:
             frame_cls = TAG_MAP[field]
         except KeyError:
@@ -56,6 +69,13 @@ class MP3Song(Song, QObject):
         )
 
     def set_art(self,filepath: str):
+        """
+        Replace the embedded album art using an image file.
+
+        Existing APIC frames are cleared. Image is written as a JPEG and saved
+        using ID3 v2.3 for maximum compatibility.
+        """
+
         self.audio.tags.delall('APIC')
         with open(filepath, "rb") as albumart:
             self.audio['APIC'] = APIC(
@@ -69,6 +89,13 @@ class MP3Song(Song, QObject):
         self.changed.emit()
     
     def set_art_bytes(self,emit_update : bool, art_bytes: bytes):
+        """
+        Replace embedded album art using raw bytes.
+
+        Behaviour is identical to ``set_art`` but accepts raw data and can
+        optionally suppress update signalling.
+        """
+
         self.audio.tags.delall('APIC')
         self.audio['APIC'] = APIC(
         encoding=3,
@@ -80,6 +107,14 @@ class MP3Song(Song, QObject):
         self.emit_update(emit_update)
     
     def set_path(self) -> Path:
+        """
+        Rename the MP3 file based on its title tag.
+
+        The new filename is sanitized and suffixed with '.mp3'. If the filename
+        does not change, no rename occurs. Raises FileExistsError if a file with
+        the target name already exists.
+        """
+
         new_path = self.path.with_name(sanitize_filename(f'{self.get_info("title")}.mp3'))
         if self.path ==  new_path:
             print("Target name is already name of the file.")
@@ -92,6 +127,12 @@ class MP3Song(Song, QObject):
         return self.path
 
     def update(self, **fields):
+        """
+        Update metadata fields and save using ID3 v2.3 tags.
+
+        Differs from the base implementation by explicitly forcing writing with
+        ``v2_version=3`` for MP3 compatibility.
+        """
         for field, value in fields.items():
             self.set(field, value)
         self.changed.emit()

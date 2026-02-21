@@ -5,7 +5,7 @@ from .album_grid_view_components import AlbumWidget, AlbumProvider
 from ..library_manager import LibraryService, AlbumMeta, RETURN_VALUES
 
 
-COLUMNS = 2
+COLUMNS = 3
 
 SORT_TYPES = {"ID" : RETURN_VALUES.ID, 
                 "Title" : RETURN_VALUES.TITLE, 
@@ -71,6 +71,6 @@ class AlbumGridView(QWidget):
         row = index // COLUMNS  # COLUMNS = 4
         col = index % COLUMNS
 
-        album_widget = AlbumWidget(album, self.widget)
+        album_widget = AlbumWidget(album, self.lib.art_cache, self.widget)
         self.gridLayout.addWidget(album_widget, row, col, alignment=Qt.AlignTop | Qt.AlignLeft)
         album_widget.clicked.connect(lambda checked=False, a=album: self.album_clicked.emit(a))
