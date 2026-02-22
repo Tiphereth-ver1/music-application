@@ -4,9 +4,9 @@ from PySide6.QtWidgets import (QApplication, QHBoxLayout, QMainWindow, QMenuBar,
 
 from .swappable import Swappable
 from .subcomponents import QueueHistoryDisplay, NavigationBar
-from .player import Player
+from .theme_manager import ThemeManager
 from .library_manager import LibraryService
-
+from .player import Player
 class Ui_MainWindow(QWidget):
     returning_song = Signal(object, str)
     updating_view = Signal()
@@ -14,7 +14,7 @@ class Ui_MainWindow(QWidget):
     clearing_history = Signal()
     perform_action = Signal(str)
     
-    def __init__(self, library : LibraryService, player: Player, parent = None):
+    def __init__(self, library : LibraryService, player: Player, theme_manager : ThemeManager, parent = None):
         super().__init__(parent)
         self.layout = QHBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
@@ -23,7 +23,7 @@ class Ui_MainWindow(QWidget):
         self.leftbar = NavigationBar(self)
         self.leftbar.setMinimumSize(QSize(80, 600))
         self.leftbar.setSizePolicy(QSizePolicy.Policy.Fixed,QSizePolicy.Policy.Expanding)
-        self.swappable = Swappable(library, self)
+        self.swappable = Swappable(library, theme_manager, self)
         self.swappable.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Expanding)
         self.swappable.setMinimumSize(QSize(600, 600))
         self.swappable.returning_song.connect(self.return_songs)

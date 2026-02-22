@@ -7,3 +7,4 @@ from .song_downloader_view import DownloaderView
 from .playlist_grid_view import PlaylistGridView
 from .playlist_select import PlaylistSelect
 from .song_search_view import SongSearchView
+from .settings_view import SettingsView

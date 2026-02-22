@@ -1,15 +1,16 @@
 from PySide6.QtWidgets import QWidget, QStackedWidget, QVBoxLayout, QSizePolicy
 from PySide6.QtCore import Signal
 
-from .subcomponents import AlbumGridView, SongSearchView, PlayerView, PlaylistGridView, AlbumSelect, DownloaderView, PlaylistSelect
+from .subcomponents import AlbumGridView, SongSearchView, PlayerView, PlaylistGridView, AlbumSelect, DownloaderView, PlaylistSelect, SettingsView
 from .subcomponents.playlist_grid_view_components import PlaylistProvider
 from .library_manager import LibraryService
+from .theme_manager import ThemeManager
 
 class Swappable(QWidget):
     perform_action = Signal(str)
     returning_song = Signal(object, str)
     updating_view = Signal()
-    def __init__(self, library : LibraryService, parent=None):
+    def __init__(self, library : LibraryService, theme_manager : ThemeManager, parent=None):
         super().__init__(parent)
         self.lib = library
         self.playlist_provider = PlaylistProvider(library)
@@ -33,6 +34,7 @@ class Swappable(QWidget):
         self.player_view = PlayerView(self.lib, self.stack)
         self.downloader_view = DownloaderView(self.lib, self.stack)
         self.song_search_view = SongSearchView(self.lib, self.stack)
+        self.settings_view = SettingsView(theme_manager, self.stack)
         self.album_select = None
         self.playlist_select = None
 
@@ -44,12 +46,14 @@ class Swappable(QWidget):
         self.downloader_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.playlist_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.song_search_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.settings_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         self.stack.addWidget(self.player_view)
         self.stack.addWidget(self.song_search_view)
         self.stack.addWidget(self.playlist_view)
         self.stack.addWidget(self.album_view)
         self.stack.addWidget(self.downloader_view)
+        self.stack.addWidget(self.settings_view)
 
         # default visible page
         self.stack.setCurrentWidget(self.album_view)

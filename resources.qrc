@@ -19,5 +19,6 @@
         <file>assets/icons/Search.svg</file>
         <file>assets/icons/Edit.svg</file>
         <file>assets/icons/Repeat.svg</file>
+        <file>assets/icons/Settings.svg</file>
     </qresource>
 </RCC>

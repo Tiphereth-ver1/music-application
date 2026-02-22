@@ -12,7 +12,8 @@ ICONS = {
     "song search" : ":/assets/icons/Search.svg",
     "playlist" : ":/assets/icons/Playlists.svg", 
     "album" : ":/assets/icons/Albums.svg",
-    "downloader" : ":/assets/icons/Downloader.svg", 
+    "downloader" : ":/assets/icons/Downloader.svg",
+    "settings" :  ":/assets/icons/Settings.svg",
     "visualiser" : ":/assets/icons/Visualiser.svg",
 
 }

@@ -9,7 +9,7 @@ from .ui_mainwindow import Ui_MainWindow
 from .audio_engine import AudioEngine
 from .song import Song
 from .library_manager import LibraryService
-from . import Player, LoopMode, resources_rc, load_theme, get_str_path
+from . import Player, LoopMode, resources_rc, ThemeManager
 
 LOOP_MODES = [LoopMode.NONE, LoopMode.PLAYLIST, LoopMode.SINGLE]
 
@@ -20,6 +20,7 @@ class AppContext:
     lib: LibraryService
     player: Player
     engine: AudioEngine
+    theme_manager: ThemeManager
 
 
 class MainWindow(QMainWindow):
@@ -31,9 +32,10 @@ class MainWindow(QMainWindow):
         self.lib = ctx.lib
         self.player = ctx.player
         self.engine = ctx.engine
+        self.theme_manager = ctx.theme_manager
 
         # --- Setup UI ---
-        self.ui = Ui_MainWindow(self.lib, self.player)
+        self.ui = Ui_MainWindow(self.lib, self.player, self.theme_manager, self)
         # Attach the generated UI stack to this MainWindow so it is visible
         self.setCentralWidget(self.ui)
         self.swappable = self.ui.swappable
@@ -162,31 +164,22 @@ if __name__ == "__main__":
     lib = LibraryService("music.db")
     engine = AudioEngine(lib)
     player = engine.player
-    ctx = AppContext(lib, player, engine)
 
     app = QApplication(sys.argv)
+    app.theme_watcher = QFileSystemWatcher()
 
-    theme = "mint_green"
-    path = get_str_path(theme)
-    print(path)
-
-    app.setStyleSheet(load_theme(theme))
+    theme = "Suika Kaiju"
 
     app.theme_watcher = QFileSystemWatcher()
-    app.theme_watcher.addPath(str(path))
-
-    def reload_theme(changed_path):
-        if not os.path.exists(changed_path):
-            return
-
-        app.setStyleSheet(load_theme(theme))
-        print("theme reloaded")
-
-        if changed_path not in app.theme_watcher.files():
-            app.theme_watcher.addPath(changed_path)
-
-    app.theme_watcher.fileChanged.connect(reload_theme)
-
+    theme_manager = ThemeManager(app, app.theme_watcher)
+    theme_manager.set_theme(theme)
+    app.theme_watcher.fileChanged.connect(theme_manager.reload_theme)
+    ctx = AppContext(
+    lib=lib,
+    player=player,
+    engine=engine,
+    theme_manager=theme_manager,
+)
 
     pre_window = round(time.time()*1000)
     window = MainWindow(ctx)
