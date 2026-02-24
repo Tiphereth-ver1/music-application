@@ -128,7 +128,13 @@ class PlaylistEditor(QDialog):
 
 
     def get_info(self):
-        return self.fields["title"].value(),str(self.cover_path)
+        if self.cover_path:
+            cover_path = str(self.cover_path)
+        else:
+            cover_path = None
+            print("No cover path available")
+
+        return self.fields["title"].value(), cover_path
 
     
     def select_new_art(self) -> bytes:

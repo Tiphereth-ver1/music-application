@@ -1,5 +1,5 @@
 from PySide6.QtCore import (QSize, QTime, QUrl, Qt, Signal)
-from PySide6.QtWidgets import (QSizePolicy, QVBoxLayout, QWidget, QComboBox)
+from PySide6.QtWidgets import (QSizePolicy, QVBoxLayout, QHBoxLayout, QWidget, QComboBox, QLabel)
 from ..theme_manager import ThemeManager
 
 class SettingsView(QWidget):
@@ -9,12 +9,17 @@ class SettingsView(QWidget):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setMinimumSize(QSize(520, 640))
         self.layout = QVBoxLayout(self)
-        self.theme_combo_box = QComboBox(self)
+        self.theme_editor = QWidget(self)
+        self.theme_editor_layout = QHBoxLayout(self)
+        self.theme_label = QLabel(self.theme_editor, text = "Select Theme:")
+        self.theme_editor_layout.addWidget(self.theme_label)
+        self.theme_combo_box = QComboBox(self.theme_editor)
         self.themes = self.theme_manager.themes
         self.fill_combo_box()
-        self.layout.addWidget(self.theme_combo_box)
+        self.theme_editor_layout.addWidget(self.theme_combo_box)
         self.theme_combo_box.currentTextChanged.connect(self.update_theme)
         self.theme_combo_box.setCurrentText(self.theme_manager.current_theme)
+        self.layout.addWidget(self.theme_editor)
 
 
     def fill_combo_box(self):

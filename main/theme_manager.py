@@ -36,6 +36,7 @@ class ThemeManager(QObject):
         print("theme reloaded")
 
         if changed_path not in self.theme_watcher.files():
+            self.theme_watcher.removePath(self.get_str_path(self.current_theme))
             self.theme_watcher.addPath(changed_path)
 
     def find_all_themes(self):

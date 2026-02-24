@@ -1,13 +1,13 @@
 from PySide6.QtCore import (QSize, QTime, QUrl, Qt, Signal)
-from PySide6.QtWidgets import (QApplication, QHBoxLayout, QGridLayout, QLabel, QMainWindow,
+from PySide6.QtWidgets import (QApplication, QHBoxLayout, QVBoxLayout, QGridLayout, QLabel, QMainWindow,
     QMenu, QMenuBar, QSizePolicy, QStatusBar, QScrollArea,
-    QVBoxLayout, QWidget)
+    QVBoxLayout, QWidget, QPushButton)
 
 from .playlist_grid_view_components import PlaylistWidget, PlaylistProvider
 from ..library_manager import LibraryService, PlaylistMeta
 
 
-COLUMNS = 2
+COLUMNS = 3
 
 class PlaylistGridView(QWidget):
     playlist_clicked = Signal(object)  # emits Playlist instance
@@ -19,6 +19,10 @@ class PlaylistGridView(QWidget):
         self.lib = library
 
         # --- Scrollable playlist area ---
+        self.content_layout = QVBoxLayout(self)
+        self.create_button = QPushButton("Create Playlist", self)
+        self.create_button.clicked.connect(self.create_playlist)
+        self.content_layout.addWidget(self.create_button)
         self.scrollArea = QScrollArea()
         self.scrollArea.setWidgetResizable(True)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -33,8 +37,7 @@ class PlaylistGridView(QWidget):
         self.gridLayout.setSpacing(10)
         self.scrollArea.setWidget(self.widget)
 
-        layout = QVBoxLayout(self)
-        layout.addWidget(self.scrollArea)
+        self.content_layout.addWidget(self.scrollArea)
         self.update_ui(self.playlist_provider.get_playlists())
 
     def _clear(self):
@@ -44,6 +47,8 @@ class PlaylistGridView(QWidget):
             if widget:
                 widget.deleteLater()
 
+    def create_playlist(self):
+        self.lib.upsert_playlist("Untitled Playlist")
 
     def update_ui(self, playlists: list[PlaylistMeta]):
         self._clear()
@@ -55,6 +60,6 @@ class PlaylistGridView(QWidget):
         row = index // COLUMNS  # COLUMNS = 4
         col = index % COLUMNS
 
-        playlist_widget = PlaylistWidget(playlist, self.widget)
+        playlist_widget = PlaylistWidget(playlist, self.lib.art_cache, self.widget)
         self.gridLayout.addWidget(playlist_widget, row, col, alignment=Qt.AlignTop | Qt.AlignLeft)
         playlist_widget.clicked.connect(lambda checked=False, p=playlist: self.playlist_clicked.emit(p))

@@ -23,4 +23,4 @@ class PlaylistProvider(QObject):
         return self._playlists
 
     def get_playlist_song_ids(self, playlist_id: int) -> list[int]:
-        return self.lib.get_playlist_song_ids(playlist)
+        return self.lib.get_playlist_song_ids(self._playlists)

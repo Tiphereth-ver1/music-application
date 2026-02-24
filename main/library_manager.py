@@ -613,8 +613,9 @@ class LibraryService(QObject):
             ORDER BY COALESCE(position, 999)
             """,(playlist_id,))
         return [r[0] for r in self.cursor.fetchall()]
-    
+
     def upsert_playlist(self, title : str):
+
         self.cursor.execute("""
         INSERT INTO playlists (title, created_at, updated_at)
         VALUES (?,?,?)
@@ -622,37 +623,49 @@ class LibraryService(QObject):
                 cover_path = COALESCE(excluded.cover_path, playlists.cover_path)
         """, (title, 0, 0))
         self.conn.commit()
+        self.playlists_changed.emit()
 
     def modify_playlist(self, playlist_id : int, title : str, cover_path : str):
+        if cover_path:
+            print("cover path something")
+            with open(cover_path, "rb") as image_file:
+                image_bytes = image_file.read()
+                self.art_cache.cache_image_bytes(image_bytes, ext=".jpg")
+                art_hex = self.art_cache.get_hex_cache(image_bytes)
+        else:
+            art_hex = None
+
         self.cursor.execute("""
             UPDATE playlists
-            SET title = ?, cover_path = ?
+            SET title = ?, cover_path = ?, art_hex = ?
             WHERE id = ?;
-        """, (title, cover_path, playlist_id))
+        """, (title, cover_path, art_hex, playlist_id))
 
         if self.cursor.rowcount == 0:
             raise KeyError(f"Playlist {playlist_id} does not exist")
 
         self.conn.commit()
+        self.playlists_changed.emit()
 
     def get_playlist_meta_by_id(self, playlist_id : int) -> PlaylistMeta:
         self.cursor.execute("""
-            SELECT id, title, cover_path
+            SELECT id, title, cover_path, art_hex
             FROM playlists
             WHERE id = ?
             ORDER BY title COLLATE NOCASE
         """, (playlist_id,))
 
-        (pid, title, cover) = self.cursor.fetchone()
+        (pid, title, cover, art_hex) = self.cursor.fetchone()
         return PlaylistMeta(
                 id= pid,
                 title=title,
-                cover_path=Path(cover) if cover else None
+                cover_path=Path(cover) if cover else None,
+                art_hex = art_hex if art_hex else None
             )
 
     def get_playlists(self) -> list[PlaylistMeta]:
         self.cursor.execute("""
-            SELECT id, title, cover_path
+            SELECT id, title, cover_path, art_hex
             FROM playlists
             ORDER BY title COLLATE NOCASE
         """)
@@ -661,9 +674,10 @@ class LibraryService(QObject):
             PlaylistMeta(
                 id=pid,
                 title=title,
-                cover_path=Path(cover) if cover else None
+                cover_path=Path(cover) if cover else None,
+                art_hex = art_hex if art_hex else None
             )
-            for (pid, title, cover) in rows
+            for (pid, title, cover, art_hex) in rows
         ]
 
     def delete_playlist(self, playlist_id : int) -> None :
