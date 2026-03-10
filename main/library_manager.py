@@ -100,6 +100,7 @@ class LibraryService(QObject):
         
         pre_startup = round(time.time()*1000)
         # self._clear_database()
+        self._purge_playlists()
         self._initialise_database()
         self.scan_library()
         startup = round(time.time()*1000)
@@ -117,6 +118,10 @@ class LibraryService(QObject):
 
     def _to_abs(self, rel_path: Path) -> Path:
         return self._base_dir() / rel_path
+    
+    def _purge_playlists(self) -> None:
+        with self.conn:
+            self.conn.execute("DROP TABLE IF EXISTS playlists")
 
     def _clear_database(self) -> None:
         with self.conn:
@@ -615,13 +620,16 @@ class LibraryService(QObject):
         return [r[0] for r in self.cursor.fetchall()]
 
     def upsert_playlist(self, title : str):
-
+        self.cursor.execute("""
+        SELECT COUNT(*) FROM playlists;
+        """)
+        num = self.cursor.fetchone()[0]
         self.cursor.execute("""
         INSERT INTO playlists (title, created_at, updated_at)
         VALUES (?,?,?)
         ON CONFLICT(title) DO UPDATE SET
                 cover_path = COALESCE(excluded.cover_path, playlists.cover_path)
-        """, (title, 0, 0))
+        """, (f"{title} {num}", 0, 0))
         self.conn.commit()
         self.playlists_changed.emit()
 

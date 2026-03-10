@@ -10,16 +10,18 @@ class SettingsView(QWidget):
         self.setMinimumSize(QSize(520, 640))
         self.layout = QVBoxLayout(self)
         self.theme_editor = QWidget(self)
-        self.theme_editor_layout = QHBoxLayout(self)
+        self.theme_editor_layout = QHBoxLayout(self.theme_editor)
         self.theme_label = QLabel(self.theme_editor, text = "Select Theme:")
         self.theme_editor_layout.addWidget(self.theme_label)
         self.theme_combo_box = QComboBox(self.theme_editor)
+        self.theme_combo_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.themes = self.theme_manager.themes
         self.fill_combo_box()
         self.theme_editor_layout.addWidget(self.theme_combo_box)
         self.theme_combo_box.currentTextChanged.connect(self.update_theme)
         self.theme_combo_box.setCurrentText(self.theme_manager.current_theme)
         self.layout.addWidget(self.theme_editor)
+        self.layout.addStretch(1)
 
 
     def fill_combo_box(self):

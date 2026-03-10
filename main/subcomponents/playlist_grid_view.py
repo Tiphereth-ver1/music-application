@@ -17,6 +17,8 @@ class PlaylistGridView(QWidget):
         self.playlist_provider = playlist_provider
         self.playlist_provider.playlists_changed.connect(self.update_ui)
         self.lib = library
+        self._widgets: dict[int, PlaylistWidget] = {}
+
 
         # --- Scrollable playlist area ---
         self.content_layout = QVBoxLayout(self)
@@ -51,9 +53,38 @@ class PlaylistGridView(QWidget):
         self.lib.upsert_playlist("Untitled Playlist")
 
     def update_ui(self, playlists: list[PlaylistMeta]):
-        self._clear()
-        for playlist in playlists:
-            self.add_playlist(playlist)
+        self.setUpdatesEnabled(False)
+        try:
+            new_ids = {p.id for p in playlists}
+
+            # remove missing
+            for pid in list(self._widgets.keys()):
+                if pid not in new_ids:
+                    w = self._widgets.pop(pid)
+                    self.gridLayout.removeWidget(w)
+                    w.deleteLater()
+
+            # add/update existing
+            for p in playlists:
+                w = self._widgets.get(p.id)
+                if w is None:
+                    w = PlaylistWidget(p, self.lib.art_cache, self.widget)
+                    w.clicked.connect(lambda checked=False, p=p: self.playlist_clicked.emit(p))
+                    self._widgets[p.id] = w
+                else:
+                    # add a method like w.set_playlist(p) to update title/cover without rebuilding
+                    w.set_playlist(p)
+
+            # reflow positions (cheap compared to rebuild)
+            for i, p in enumerate(playlists):
+                w = self._widgets[p.id]
+                row = i // COLUMNS
+                col = i % COLUMNS
+                self.gridLayout.addWidget(w, row, col, alignment=Qt.AlignTop | Qt.AlignLeft)
+
+        finally:
+            self.setUpdatesEnabled(True)
+            self.widget.update()
 
     def add_playlist(self, playlist: PlaylistMeta):
         index = self.gridLayout.count()

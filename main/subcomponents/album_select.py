@@ -76,11 +76,11 @@ class AlbumSelect(QWidget):
             if pixmap.load(str(art_source)):
                 pass
             else:
-                pixmap = QPixmap(128, 128)
+                pixmap = QPixmap(256, 256)
                 pixmap.fill(Qt.gray)
 
         else:
-            pixmap = QPixmap(128, 128)
+            pixmap = QPixmap(256, 256)
             pixmap.fill(Qt.gray)
 
         label.setPixmap(pixmap)

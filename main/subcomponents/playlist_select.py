@@ -21,6 +21,7 @@ class PlaylistSelect(QWidget):
         super().__init__(parent)
         self.internal_layout = QVBoxLayout(self)
         self.lib = library
+        self.art_cache = self.lib.art_cache
         self.playlist_provider = playlist_provider
         self.playlist_meta = playlist_meta
         self.song_ids = self.lib.get_songs_from_playlist(self.playlist_meta.id)
@@ -78,24 +79,19 @@ class PlaylistSelect(QWidget):
     def update_playlist(self, playlist_meta : PlaylistMeta) -> None:
         self.playlist_meta = playlist_meta
     
-    def _reload_preview(self, label: QLabel, art_source: bytes | Path | str | None):
+    def _reload_preview(self, label: QLabel, art_source: Path | str | None):
         pixmap = QPixmap()
 
         if isinstance(art_source, (Path, str)):
             # load from file path
             if pixmap.load(str(art_source)):
-                pixmap = pixmap.scaled(label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                pass
             else:
-                pixmap = QPixmap(150, 150)
+                pixmap = QPixmap(256, 256)
                 pixmap.fill(Qt.gray)
 
-        elif isinstance(art_source, (bytes, bytearray)) and art_source:
-            # load from bytes
-            pixmap.loadFromData(bytes(art_source))
-            pixmap = pixmap.scaled(label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
-
         else:
-            pixmap = QPixmap(150, 150)
+            pixmap = QPixmap(256, 256)
             pixmap.fill(Qt.gray)
 
         label.setPixmap(pixmap)
@@ -105,7 +101,7 @@ class PlaylistSelect(QWidget):
         title = self.playlist_meta.title
         self.title_Label.setText(f"{title}")
         length = len(song_ids)
-        self._reload_preview(self.cover_Label, self.playlist_meta.cover_path)
+        self._reload_preview(self.cover_Label, self.art_cache.get_image_cache(self.playlist_meta.art_hex, 256))
 
     def return_song(self,idx, mode):
         song_id = self.song_ids[idx]
